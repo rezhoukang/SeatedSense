@@ -1,7 +1,7 @@
 """status: extracted API routes; URLs and response formats are unchanged."""
 from fastapi import APIRouter
-import vision
-import rtdetrv4
+from backend.detection import vision
+from backend.detection import rtdetrv4
 from . import common
 
 router = APIRouter()

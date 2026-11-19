@@ -8,12 +8,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import app
-import behavior_annotations as annotations
-import dataset_store
-import inference_history as history
-import pose_behaviors
-import pose_support
-import vision
+from backend.datasets import behavior_annotations as annotations
+from backend.datasets import dataset_store
+from backend.detection import inference_history as history
+from backend.detection import pose_behaviors
+from backend.detection import pose_support
+from backend.detection import vision
 
 
 def points(raised=True):

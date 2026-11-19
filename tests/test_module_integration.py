@@ -4,12 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urljoin, urlsplit
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
 import app
-import dataset_store
+from backend.datasets import dataset_store
+from backend.project_paths import STATIC_DIR
 
 
 class ModuleIntegrationTests(unittest.TestCase):
@@ -17,8 +19,10 @@ class ModuleIntegrationTests(unittest.TestCase):
         client = TestClient(app.app)
         page = client.get("/")
         self.assertEqual(page.status_code, 200)
-        self.assertIn('type="module"', page.text)
-        pending, visited = ["/app.js"], set()
+        entry = re.search(r'<script type="module" src="([^"]+)"', page.text)
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        pending, visited = [entry[1]], set()
         while pending:
             url = pending.pop()
             if url in visited:
@@ -28,10 +32,12 @@ class ModuleIntegrationTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, url)
             self.assertIn("javascript", response.headers["content-type"], url)
             for relative in re.findall(r"from\s+['\"]([^'\"]+)['\"]|import\s+['\"]([^'\"]+)['\"]", response.text):
-                from urllib.parse import urljoin
-
                 pending.append(urljoin(url, relative[0] or relative[1]))
-        self.assertEqual(len(visited), 16)
+        expected = {"/app.js"} | {
+            "/" + module.relative_to(STATIC_DIR).as_posix()
+            for module in (STATIC_DIR / "js").rglob("*.js")
+        }
+        self.assertEqual({urlsplit(url).path for url in visited}, expected)
         styles = client.get("/style.css")
         self.assertEqual(styles.status_code, 200)
         for relative in re.findall(r"url\('([^']+)'\)", styles.text):

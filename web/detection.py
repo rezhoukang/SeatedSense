@@ -1,10 +1,10 @@
 """detection: extracted API routes; URLs and response formats are unchanged."""
 import time
 from fastapi import APIRouter, HTTPException, Query
-import vision
-import inference_history
-import head_fusion
-import rtdetrv4
+from backend.detection import vision
+from backend.detection import inference_history
+from backend.detection import head_fusion
+from backend.detection import rtdetrv4
 from . import common
 
 router = APIRouter()

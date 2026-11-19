@@ -9,11 +9,11 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 from PIL import Image
 
-import aggregate
-import aggregate_actions
-import aggregate_jobs
+from backend.aggregation import aggregate
+from backend.aggregation import aggregate_actions
+from backend.aggregation import aggregate_jobs
 import app
-from action_recognition import jobs, prompts, head_only, two_stage, store
+from backend.action_recognition import jobs, prompts, head_only, two_stage, store
 from web import common
 
 

@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-import pose_roi
+from backend.detection import pose_roi
 
 
 def detection(state='低头', dx=0):

@@ -8,9 +8,9 @@ from PIL import Image
 
 import app
 from web import common
-import rtdetrv4
-import vision
-import inference_history
+from backend.detection import rtdetrv4
+from backend.detection import vision
+from backend.detection import inference_history
 
 
 class HeadDetectionTests(unittest.TestCase):

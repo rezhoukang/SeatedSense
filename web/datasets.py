@@ -1,9 +1,9 @@
 """datasets: extracted API routes; URLs and response formats are unchanged."""
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
-import behavior_annotations
-import vision
-import head_fusion
+from backend.datasets import behavior_annotations
+from backend.detection import vision
+from backend.detection import head_fusion
 from . import common
 
 router = APIRouter()

@@ -9,9 +9,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import app
-import head_cuts
-import head_cut_faces
-import vision
+from backend.faces import head_cuts
+from backend.faces import head_cut_faces
+from backend.detection import vision
 
 
 class HeadCutFaceTests(unittest.TestCase):

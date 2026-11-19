@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import app
-import face_recognition
-import head_cut_faces
-import head_cuts
-import vision
+from backend.faces import face_recognition
+from backend.faces import head_cut_faces
+from backend.faces import head_cuts
+from backend.detection import vision
 
 
 class FaceRecognitionTests(unittest.TestCase):
@@ -342,7 +342,7 @@ class QualityGateTests(unittest.TestCase):
         """远景小脸置信度天然低于 0.8，门槛必须可调，否则全部无法进入比对。"""
         import numpy as np
 
-        from scrfd_detector import assess_quality
+        from backend.faces.scrfd_detector import assess_quality
         face = {'bbox': [20, 20, 80, 90], 'confidence': .6,
                 'landmarks': [[35, 40], [65, 40], [50, 55], [40, 75], [60, 75]]}
         image = np.random.default_rng(8).integers(0, 255, (100, 100, 3), dtype=np.uint8)
@@ -357,7 +357,7 @@ class QualityGateTests(unittest.TestCase):
     def test_size_and_sharpness_gates_are_configurable(self):
         import numpy as np
 
-        from scrfd_detector import assess_quality
+        from backend.faces.scrfd_detector import assess_quality
         face = {'bbox': [20, 20, 40, 40], 'confidence': .95,
                 'landmarks': [[25, 26], [35, 26], [30, 31], [26, 35], [34, 35]]}
         image = np.random.default_rng(8).integers(0, 255, (100, 100, 3), dtype=np.uint8)

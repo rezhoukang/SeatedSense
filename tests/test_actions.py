@@ -11,8 +11,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import app
-from action_recognition import decoding, jobs, prompts, store, vlm
-from action_recognition.regions import Expansion, estimate, render_crop
+from backend.action_recognition import decoding, jobs, prompts, store, vlm
+from backend.action_recognition.regions import Expansion, estimate, render_crop
 from web import common
 
 
@@ -217,7 +217,11 @@ class ActionApiTests(unittest.TestCase):
             ('无法判断', '疑似抬头', '疑似抬头', 'context_suspected'),
             ('无法判断', '疑似低头', '疑似低头', 'context_suspected'),
             ('无法判断', '无法判断', '疑似低头', 'fallback'),
-            ('抬头', '写字', '写字', 'context_action'),
+            ('抬头', '写字', '抬头', 'head_confirmed'),
+            ('抬头', '低头看手机', '抬头', 'head_confirmed'),
+            ('抬头', '低头看平板电脑', '抬头', 'head_confirmed'),
+            ('抬头', '低头看书', '抬头', 'head_confirmed'),
+            ('抬头', '睡觉', '抬头', 'head_confirmed'),
             ('低头', '低头看手机', '低头看手机', 'context_action'),
             ('无法判断', '睡觉', '睡觉', 'context_action'),
         ]

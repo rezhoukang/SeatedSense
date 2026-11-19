@@ -10,9 +10,9 @@ from PIL import Image
 
 import app
 from web import common
-import inference_history as history
-import rtdetrv4
-import vision
+from backend.detection import inference_history as history
+from backend.detection import rtdetrv4
+from backend.detection import vision
 
 
 def detection(box, confidence=0.8, name="head"):

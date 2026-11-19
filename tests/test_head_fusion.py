@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import app
-import head_fusion
-import inference_history
-import rtdetrv4
+from backend.detection import head_fusion
+from backend.detection import inference_history
+from backend.detection import rtdetrv4
 from web import common
 
 

@@ -6,9 +6,9 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-import face_recognition
-import head_cut_faces
-from project_paths import IMAGE_EXTENSIONS
+from backend.faces import face_recognition
+from backend.faces import head_cut_faces
+from backend.project_paths import IMAGE_EXTENSIONS
 
 router = APIRouter()
 

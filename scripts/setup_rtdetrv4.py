@@ -9,8 +9,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import rtdetrv4
-from project_paths import MODELS_DIR
+from backend.detection import rtdetrv4
+from backend.project_paths import MODELS_DIR
 
 
 def setup() -> None:
@@ -53,7 +53,7 @@ def setup() -> None:
         finally:
             partial.unlink(missing_ok=True)
     print(f"Verified checkpoint: {weight}")
-    print("Install dependencies: python -m pip install -r requirements-rtdetrv4.txt")
+    print("Install dependencies: python -m pip install -r requirements/rtdetrv4.txt")
 
 
 if __name__ == "__main__":

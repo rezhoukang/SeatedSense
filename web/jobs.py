@@ -1,6 +1,6 @@
 """jobs: extracted API routes; URLs and response formats are unchanged."""
 from fastapi import APIRouter, HTTPException
-import vision
+from backend.detection import vision
 from . import common
 
 router = APIRouter()

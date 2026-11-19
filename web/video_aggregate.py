@@ -3,8 +3,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-import video_aggregate
-from action_recognition import jobs, store
+from backend.aggregation import video_aggregate
+from backend.action_recognition import jobs, store
 from . import common
 from .actions import _call
 

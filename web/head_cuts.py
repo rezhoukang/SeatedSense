@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-import head_cuts
-import head_cut_faces
-from project_paths import IMAGE_EXTENSIONS
+from backend.faces import head_cuts
+from backend.faces import head_cut_faces
+from backend.project_paths import IMAGE_EXTENSIONS
 from . import common
 
 router = APIRouter()

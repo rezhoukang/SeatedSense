@@ -37,7 +37,7 @@ FastAPI 后端 + 原生 HTML/CSS/JS 前端，数据存本地文件，**无需数
 
 在「头管理」选择已完成的批次，点击「批量检测人脸」，使用 SCRFD-10G 对该批次 `crops/` 中的原始 PNG 检测，输入640、默认置信度0.5，界面可调0.01～0.99。保留每个 `HC…` 父编号；同一裁剪多张人脸使用 `_F01`、`_F02` 后缀。结果显示检测状态、置信度、人脸原始裁剪及检测框，支持检出/未检出/失败/未检测筛选、取消任务及重启后恢复查看。
 
-人脸结果保存在同一批次的 `face_detection.json`、`faces/<任务编号>/` 和 `face_annotations/<任务编号>/`，自动包含在批次ZIP中，仍由 `/output/` 规则排除Git。JSON保存裁剪内和原课堂图片的人脸框坐标、五点位置及置信度。此步骤是人脸检测；原始Head裁剪继续保留。可选依赖：`pip install -r requirements-face-detection.txt`，检测权重放在 `weight/scrfd/det_10g.onnx`。接口：`POST /api/head-cuts/<批次编号>/faces`，请求体 `{"confidence":0.5}`。
+人脸结果保存在同一批次的 `face_detection.json`、`faces/<任务编号>/` 和 `face_annotations/<任务编号>/`，自动包含在批次ZIP中，仍由 `/output/` 规则排除Git。JSON保存裁剪内和原课堂图片的人脸框坐标、五点位置及置信度。此步骤是人脸检测；原始Head裁剪继续保留。可选依赖：`pip install -r requirements/face-detection.txt`，检测权重放在 `weight/scrfd/det_10g.onnx`。接口：`POST /api/head-cuts/<批次编号>/faces`，请求体 `{"confidence":0.5}`。
 
 ### 1:N 人脸识别与花名册
 
@@ -71,21 +71,21 @@ FastAPI 后端 + 原生 HTML/CSS/JS 前端，数据存本地文件，**无需数
 2. 调整左右扩展、顶部留白、向下延伸，默认及推荐比例分别为每侧 `0.85` 倍头宽、`0.00` 倍头高、头框下沿以下 `1.30` 倍头高。滑块预览当前目标，点「重新生成本批次裁剪」保存全部目标；也可用原图拖框或原图像素坐标单独修正，区域必须包含目标头框。区域只是几何估算，遮挡和邻座干扰需要检查。
 3. 点击「分析全部裁剪」，或选中部分目标后分析。每人只输出抬头、低头、低头玩手机、低头看书、睡觉之一，证据不足时输出无法判断，同时保存可见证据和不确定原因。睡觉按明显趴桌或闭眼伏下等可见姿态判断，不能仅凭低头或遮挡推断已经入睡；出现物品本身不等于使用该物品。取消会在当前目标结束后停止，已完成结果保留。
 
-默认本地模型为 **Qwen3-VL-4B-Instruct / 4-bit NF4**，可切换 2B 或 FP16。首次安装额外依赖：`.venv\Scripts\python.exe -m pip install -r requirements-vlm.txt`。页面可检查、下载模型和释放 VLM 显存，权重保存到 `weight/Qwen3-VL-4B-Instruct/` 或 `weight/Qwen3-VL-2B-Instruct/`；4-bit 为运行时量化，官方下载的原始 4B 权重磁盘占用约 8.9 GB。只从本地权重加载推理，下载模型期间不上传课堂图片。串行处理裁剪，VLM 输入保持比例、最长边不超过 768 像素。进入 Head 检测前卸载 VLM，进入 VLM 分析前释放 Head 模型缓存，以减少显存争用。
+默认本地模型为 **Qwen3-VL-4B-Instruct / 4-bit NF4**，可切换 2B 或 FP16。首次安装额外依赖：`.venv\Scripts\python.exe -m pip install -r requirements/vlm.txt`。页面可检查、下载模型和释放 VLM 显存，权重保存到 `weight/Qwen3-VL-4B-Instruct/` 或 `weight/Qwen3-VL-2B-Instruct/`；4-bit 为运行时量化，官方下载的原始 4B 权重磁盘占用约 8.9 GB。只从本地权重加载推理，下载模型期间不上传课堂图片。串行处理裁剪，VLM 输入保持比例、最长边不超过 768 像素。进入 Head 检测前卸载 VLM，进入 VLM 分析前释放 Head 模型缓存，以减少显存争用。
 
 批次原图快照、干净裁剪、标记目标头框的 VLM 输入和 `record.json` 保存于 `data/outputs/action_recognition/<批次编号>/`。`data/`、`weight/` 已在 `.gitignore` 中，图片和权重不会提交 Git。区域修改会清除对应旧动作；相同裁剪、模型、量化设置和提示词版本可复用已有结果，勾选「重新分析已有结果」可强制重跑。历史批次在页面左侧恢复。
 
 页面的「动作与提示词配置」支持添加动作、启用/停用、编辑判定规则及 0～100 的优先级，也提供「启用打哈欠示例」、JSON 编辑和完整提示词预览。默认仍启用原有五类动作，打哈欠示例初始关闭；“无法判断”始终保留。配置按 JSON 保存，后端组装为文本任务指令发送给 VLM，输出也要求 JSON（`state`、`evidence`、`uncertainty`），不需要重新训练模型；新增动作的实际效果需要课堂样本验证。规则只判断可见动作，不依据打哈欠推断疲劳。
 
-可随代码查看和修改的默认配置是 `action_recognition/default_prompt.json`，前端保存的配置位于已忽略的 `data/outputs/action_recognition/prompt_config.json`。`GET/PUT /api/actions/prompt` 读取/保存，`POST /api/actions/prompt/preview` 只编译预览、不保存。每次分析启动时固定一份配置，保存期间的修改只影响下一次任务；`record.json` 中的 `prompt_profiles` 保存配置与完整提示词，动作结果通过 `prompt_config_id` 对应。规则改变会使相同裁剪的旧缓存失效，但不会直接修改历史动作结果。
+可随代码查看和修改的默认配置是 `backend/action_recognition/default_prompt.json`，前端保存的配置位于已忽略的 `data/outputs/action_recognition/prompt_config.json`。`GET/PUT /api/actions/prompt` 读取/保存，`POST /api/actions/prompt/preview` 只编译预览、不保存。每次分析启动时固定一份配置，保存期间的修改只影响下一次任务；`record.json` 中的 `prompt_profiles` 保存配置与完整提示词，动作结果通过 `prompt_config_id` 对应。规则改变会使相同裁剪的旧缓存失效，但不会直接修改历史动作结果。
 
-后端拆分为 `action_recognition/regions.py`（几何区域）、`store.py`（持久化和裁剪）、`prompts.py`（JSON 配置及提示词组装）、`vlm.py`（本地模型和结果校验）、`jobs.py`（批量后台任务），独立接口在 `web/actions.py`，页面脚本为 `frontend/js/actions.js`、`frontend/js/action-prompts.js`，样式为 `frontend/styles/actions.css`。接口统一前缀 `/api/actions`，独立于原有推理接口。
+后端拆分为 `backend/action_recognition/regions.py`（几何区域）、`store.py`（持久化和裁剪）、`prompts.py`（JSON 配置及提示词组装）、`vlm.py`（本地模型和结果校验）、`jobs.py`（批量后台任务），独立接口在 `web/actions.py`，页面脚本为 `frontend/js/actions.js`、`frontend/js/action-prompts.js`，样式为 `frontend/styles/actions.css`。接口统一前缀 `/api/actions`，独立于原有推理接口。
 
 ## 聚合推理
 
 「数据集管理」右侧新增「聚合推理」标签页，布局与「图片推理」一致：顶部工具栏 → 子标签（待推理图片 / 聚合结果）→ 图库或结果区。左侧图库与图片推理共用同一个 `data/uploads/`，点一张图即按顺序跑三步，结果区在原图上叠框显示。
 
-1. **目标检测**：与「图片推理 → 目标检测」完全同一套——`medium.pt` 0.45 为基准、RT-DETRv4 0.25 补齐，两路 imgsz 固定 640，合并 IoU ≤ 0.1、自定义 IoU 生效置信度 > 0.55。这些参数在 `aggregate.py` 里与 `head_fusion` 默认值同源锁死，**接口与界面都不暴露**，避免两处目标检测参数各自漂移。
+1. **目标检测**：与「图片推理 → 目标检测」完全同一套——`medium.pt` 0.45 为基准、RT-DETRv4 0.25 补齐，两路 imgsz 固定 640，合并 IoU ≤ 0.1、自定义 IoU 生效置信度 > 0.55。这些参数在 `backend/aggregation/aggregate.py` 里与 `head_fusion` 默认值同源锁死，**接口与界面都不暴露**，避免两处目标检测参数各自漂移。
 2. **人脸识别**：整图 SCRFD 检出所有人脸 → 质量筛选 → ArcFace 提特征 → 与学生人脸库 1:N 比对，然后**把识别到的姓名贴到对应的人头框上**（人脸框落在人头框内时 IoU = 人脸面积 / 人头面积 > 0）。一个库内编号只给一张脸（复用一对一贪心消解），一个人头也只贴一个姓名。
 
 **人脸识别参数全部锁死**（`aggregate.FACE_CONFIDENCE` / `MATCH_THRESHOLD` / `MIN_QUALITY_CONFIDENCE` / `MIN_FACE_PIXELS` / `MIN_FACE_SHARPNESS`）：人脸置信度 `0.5`、识别阈值 `0.3`、质量门槛 `0.5 / 24px / 50`。界面上不再有阈值输入框，只剩「人脸识别」「姿势检测」两个勾选框（取消勾选即跳过该步，`steps.<步骤>.enabled=false`）；接口也只收 `face` / `pose`，多传的阈值字段一律忽略。生效值回报在 `steps.face` 里，方便核对。远景小脸给的阈值太低会放进模糊/侧脸，太高又会把整排人都卡掉，所以把这两个值钉死在这里。
@@ -146,7 +146,7 @@ Pose 低头状态继续使用全图物体检测与最大交集关联：直接以
 
 图片、视频和预标注的 Pose 设置提供「全图物体检测与关联」开关和物体置信度。结果中的 `behavior.roi` 保存 Pose 框矩形、原图物体坐标、置信度、交集面积和绑定人员序号；前端骨架层显示橙色 ROI 边界与黄色物体框，结果图及视频也绘制这些证据。模型未加载成功时图片结果会提示，详细原因保存在关联状态中。人工行为标注类别暂保持原有列表。
 
-Pose 推理使用 `pose_behaviors.py` 的举手规则：双肩及同侧肘腕关键点置信度 ≥0.6，手腕高于同侧肩至少 0.25 倍肩宽、高于肘至少 0.15 倍肩宽，并高于可靠头部位置至少 0.15 倍肩宽。头部参考依次使用鼻、双眼、双耳。任一侧满足即为“举手”，每人仅有一个状态。
+Pose 推理使用 `backend/detection/pose_behaviors.py` 的举手规则：双肩及同侧肘腕关键点置信度 ≥0.6，手腕高于同侧肩至少 0.25 倍肩宽、高于肘至少 0.15 倍肩宽，并高于可靠头部位置至少 0.15 倍肩宽。头部参考依次使用鼻、双眼、双耳。任一侧满足即为“举手”，每人仅有一个状态。
 
 未判为举手时，鼻子和双肩关键点均须置信度 ≥0.6、坐标有效，且肩宽 ≥1 像素。计算 `R=(双肩中心Y-鼻子Y)/双肩欧氏距离`。低头和抬头分别使用独立阈值，默认 R<0.05 判低头，R>0.20 判抬头；中间区域（含两个边界）与关键点不足者均排除。举手始终优先。选择 Pose 权重后，图片、视频及预标注工具栏提供两组滑块和数值输入（-1～1，步长 0.01），低头阈值必须小于抬头阈值，重新推理生效。被排除者不进入框、骨架、结果坐标、人数和视频曲线；`excluded_unknown` 记录图片排除数。
 
@@ -193,7 +193,7 @@ Pose 推理使用 `pose_behaviors.py` 的举手规则：双肩及同侧肘腕关
 首次安装（在项目根目录，已有的 torch/torchvision 继续复用）：
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-rtdetrv4.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements/rtdetrv4.txt
 .\.venv\Scripts\python.exe scripts/setup_rtdetrv4.py
 ```
 
@@ -382,46 +382,33 @@ data/datasets/mydata/
 
 ```
 watch/
-├── app.py            # 后端入口：组装路由、异常处理、静态文件
-├── web/              # 按功能划分的 FastAPI APIRouter
-│   ├── common.py     # 请求校验、上传与批量删除辅助函数
-│   ├── status.py     # 模型环境状态
-│   ├── media.py      # 上传、图库、媒体文件访问
-│   ├── history.py    # 推理记录与合并
-│   ├── detection.py  # 图片/视频推理接口
-│   ├── datasets.py   # 数据集与标注接口
-│   └── jobs.py       # 训练与后台任务接口
-├── project_paths.py  # 共享目录和文件格式定义
-├── dataset_store.py # 数据集类别、YOLO 标注读写及缓存失效
-├── vision.py         # YOLOv8 封装（模型缓存、推理、训练任务）
-├── inference_history.py # 推理记录持久化、快照与合并规则
-├── rtdetrv4.py       # RT-DETRv4 模型适配器
-├── head_fusion.py    # medium 0.45 + RT-DETRv4 0.25 一键融合（640）
-├── frontend/         # 前端：纯 HTML + CSS + JS（无构建步骤）
-│   ├── index.html
-│   ├── app.js        # ES module 入口，连接导航并启动加载
-│   ├── js/           # core/models/uploads/preview/navigation
-│   │                 # images/viewer/video/charts/outputs/training/annotator/jobs
-│   ├── style.css     # 按原始顺序加载样式
-│   └── styles/       # base/results/controls/annotator
-├── weight/           # 唯一的权重目录（*.pt + clip/ 文本编码器缓存）
-├── data/
-│   ├── uploads/      # 上传的图片
-│   ├── videos/       # 上传的视频
-│   ├── results/      # 推理结果图
-│   ├── inferences/   # 每次图片推理的独立记录与快照
-│   ├── outputs/      # 推理结果视频
-│   ├── datasets/     # 训练数据集
-│   └── runs/         # 训练输出（含 best.pt）
-├── start.bat
-└── requirements.txt
+├── app.py                     # Web 服务入口
+├── start.bat                  # Windows 启动脚本
+├── requirements.txt           # 基础依赖
+├── requirements/              # 可选依赖：face-detection、rtdetrv4、vlm
+├── backend/                   # 推理、任务和存储
+│   ├── aggregation/           # 图片和视频聚合、批处理、历史与导出
+│   ├── detection/             # YOLO、RT-DETRv4、Head 融合、姿态和推理记录
+│   ├── faces/                 # 头部裁剪、人脸处理和人像库
+│   ├── datasets/              # 数据集、YOLO 标注和行为标注
+│   ├── action_recognition/    # VLM 动作分析、两阶段规则和提示词
+│   └── project_paths.py       # 项目路径和支持的媒体格式
+├── web/                       # FastAPI 路由、请求校验和媒体访问
+├── frontend/                  # 原生 HTML、JS、CSS 和导出模板
+├── scripts/                   # 权重准备、命令行推理和辅助工具
+├── tests/                     # 后端和前端测试
+├── openh264-2.5.0-win64.dll    # Windows 视频编码，OpenCV 从工作目录加载
+├── weight/                    # 本地模型权重
+├── third_party/               # 本地第三方模型源码
+├── output/                    # 裁剪与人脸处理等本地输出
+└── data/                      # 上传、推理记录、结果、数据集和训练输出
 ```
 
 前端使用浏览器原生 ES modules，通过 `import/export` 显式声明依赖，无需 npm、打包器或编译步骤。
 `app.js` 只负责启动，各功能在 `frontend/js/` 中维护；新增页面功能从对应模块扩展。
 导航在入口注入加载函数，结果查看器用回调连接记录操作，避免模块互相导入。
 图片记录的选择、筛选和合并状态由 `images.js` 管理；标注会话由 `annotator.js` 管理。
-后端路由调用现有推理与存储层，`vision.py` 保留原有公开函数入口，数据集读写实现转到 `dataset_store.py`。
+`web/` 调用 `backend/` 中的业务模块。数据和权重的路径由 `backend/project_paths.py` 统一定义。
 样式按 base → results → controls → annotator 的顺序加载，保持原有覆盖顺序。
 
 前端修改后用 `Ctrl+F5` 强制刷新，以一并更新被导入的 JS/CSS 文件缓存。启动方式仍为 `start.bat`。

@@ -66,7 +66,7 @@ const responses = {
   '/api/actions/runs': { runs: [] },
   '/api/actions/status?model=4b&quantization=4bit': { available: false, message: '模型尚未下载', active_job: null },
   '/api/actions/prompt': (() => {
-    const config = JSON.parse(fs.readFileSync(path.resolve(root, '../action_recognition/default_prompt.json'), 'utf8'));
+    const config = JSON.parse(fs.readFileSync(path.resolve(root, '../backend/action_recognition/default_prompt.json'), 'utf8'));
     return { config, defaults: config, states: config.actions.filter(item => item.enabled).map(item => item.name).concat('无法判断'), config_id: 'fixture_config', compiled_prompt: '固定指令与可装配动作规则' };
   })(),
 };

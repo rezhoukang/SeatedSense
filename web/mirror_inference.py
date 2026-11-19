@@ -4,10 +4,10 @@ import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-import aggregate
-import aggregate_batch
-import aggregate_jobs
-from project_paths import IMAGE_EXTENSIONS
+from backend.aggregation import aggregate
+from backend.aggregation import aggregate_batch
+from backend.aggregation import aggregate_jobs
+from backend.project_paths import IMAGE_EXTENSIONS
 from . import common, image_folders
 
 router = APIRouter(prefix='/api/mirror')

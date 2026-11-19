@@ -14,10 +14,10 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 from PIL import Image
 
-import aggregate
-import aggregate_batch
-import aggregate_history
-import aggregate_jobs
+from backend.aggregation import aggregate
+from backend.aggregation import aggregate_batch
+from backend.aggregation import aggregate_history
+from backend.aggregation import aggregate_jobs
 import app
 from web import common
 

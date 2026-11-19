@@ -11,12 +11,12 @@ from httpx import Response
 from PIL import Image
 from ultralytics.engine.results import Results
 
-import aggregate
+from backend.aggregation import aggregate
 import app
-import face_recognition
-import head_fusion
-import pose_roi
-import vision
+from backend.faces import face_recognition
+from backend.detection import head_fusion
+from backend.detection import pose_roi
+from backend.detection import vision
 from web import common
 
 

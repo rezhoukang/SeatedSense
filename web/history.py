@@ -1,7 +1,7 @@
 """history: extracted API routes; URLs and response formats are unchanged."""
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-import inference_history
+from backend.detection import inference_history
 from . import common
 
 router = APIRouter()

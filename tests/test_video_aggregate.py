@@ -11,8 +11,8 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 import app
-import video_aggregate
-from action_recognition import jobs, prompts, store, vlm
+from backend.aggregation import video_aggregate
+from backend.action_recognition import jobs, prompts, store, vlm
 from web import common
 
 

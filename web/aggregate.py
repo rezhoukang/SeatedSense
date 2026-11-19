@@ -5,12 +5,12 @@ from pydantic import BaseModel, Field
 from urllib.parse import quote
 from typing import Literal
 
-import aggregate
-import aggregate_jobs
-import aggregate_batch
-import aggregate_history
-import face_recognition
-from project_paths import IMAGE_EXTENSIONS
+from backend.aggregation import aggregate
+from backend.aggregation import aggregate_jobs
+from backend.aggregation import aggregate_batch
+from backend.aggregation import aggregate_history
+from backend.faces import face_recognition
+from backend.project_paths import IMAGE_EXTENSIONS
 from . import common
 from . import image_folders
 

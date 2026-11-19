@@ -3,7 +3,7 @@ from pathlib import Path, PurePosixPath
 import json
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-import vision
+from backend.detection import vision
 from pydantic import BaseModel, Field
 from . import common
 from . import image_folders

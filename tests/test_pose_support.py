@@ -10,10 +10,10 @@ from PIL import Image
 from fastapi.testclient import TestClient
 
 import app
-import inference_history
-import pose_support
-import pose_roi
-import vision
+from backend.detection import inference_history
+from backend.detection import pose_support
+from backend.detection import pose_roi
+from backend.detection import vision
 from ultralytics.engine.results import Results
 from web import common
 

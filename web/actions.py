@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from action_recognition import decoding, head_only, jobs, prompts, store, vlm
-from action_recognition.regions import Expansion
-from project_paths import IMAGE_EXTENSIONS
+from backend.action_recognition import decoding, head_only, jobs, prompts, store, vlm
+from backend.action_recognition.regions import Expansion
+from backend.project_paths import IMAGE_EXTENSIONS
 from . import common
 
 router = APIRouter(prefix="/api/actions", tags=["独立动作识别"])

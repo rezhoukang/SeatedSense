@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import rtdetrv4
-import vision
+from backend.detection import rtdetrv4
+from backend.detection import vision
 
 
 def main() -> None:

@@ -6,21 +6,21 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 
-import vision
-import rtdetrv4
+from backend.detection import vision
+from backend.detection import rtdetrv4
 
 logger = logging.getLogger("watch")
 
 
 def _validate_head_thresholds(down: float, up: float) -> None:
-    import pose_behaviors
+    from backend.detection import pose_behaviors
 
     try:
         pose_behaviors.validate_thresholds(down, up)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-from project_paths import (
+from backend.project_paths import (
     STATIC_DIR, UPLOAD_DIR, VIDEO_DIR, RESULTS_DIR, OUTPUT_DIR, MODELS_DIR,
     IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
 )
@@ -116,7 +116,7 @@ def _require_yolo_weights(weights: str) -> None:
 
 
 def _require_head_detection() -> None:
-    from head_fusion import BASE_WEIGHTS
+    from backend.detection.head_fusion import BASE_WEIGHTS
     _require_image_backend(BASE_WEIGHTS)
     _require_image_backend(rtdetrv4.WEIGHTS_NAME)
 

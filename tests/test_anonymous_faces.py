@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch
 import cv2
 import numpy as np
 
-import anonymous_faces
-import scrfd_detector
+from backend.faces import anonymous_faces
+from backend.faces import scrfd_detector
 
 
 class AnonymousFaceTests(unittest.TestCase):
