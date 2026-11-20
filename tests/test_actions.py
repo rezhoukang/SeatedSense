@@ -40,6 +40,29 @@ class RegionTests(unittest.TestCase):
 
 
 class VlmResponseTests(unittest.TestCase):
+    def test_batch_generates_separate_ordered_answers_and_isolates_bad_json(self):
+        import torch
+        model = Mock(device=torch.device('cpu'))
+        model.generation_config.pad_token_id = 0
+        model.generate.return_value = torch.tensor([[0, 1, 2, 3, 0], [4, 5, 6, 7, 8]])
+        processor = Mock()
+        processor.apply_chat_template.return_value = {'input_ids': torch.tensor([[0, 1, 2], [4, 5, 6]])}
+        processor.batch_decode.return_value = ['无效 JSON', '{"state":"抬头","evidence":"面向前方"}']
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / f'{index}.png' for index in range(2)]
+            for path, size in zip(paths, [(32, 48), (64, 32)], strict=True):
+                Image.new('RGB', size).save(path)
+            with patch.object(vlm, '_load', return_value=(model, processor)):
+                first, second = vlm.analyze_group(paths, '4b', '4bit', prompts.defaults(), 'A')
+        model.generate.assert_called_once()
+        messages = processor.apply_chat_template.call_args.args[0]
+        self.assertEqual([row[0]['content'][0]['image'].size for row in messages], [(32, 48), (64, 32)])
+        self.assertIsInstance(first, vlm.ResponseError)
+        self.assertEqual(first.metrics['generated_tokens'], 1)
+        self.assertEqual(second['state'], '抬头')
+        self.assertEqual(second['metrics']['batch_size'], 2)
+        self.assertEqual(second['metrics']['generated_tokens'], 2)
+
     def test_generation_forwards_all_presets_and_preserves_failed_response_metrics(self):
         import torch
         model = Mock(device=torch.device('cpu'))
@@ -295,6 +318,32 @@ class ActionApiTests(unittest.TestCase):
         saved = store.read(record['run_id'])
         self.assertTrue(saved['crops'][0]['action']['provisional'])
         self.assertEqual(saved['analysis_sessions'][-1]['results'][0]['stages']['head']['state'], '抬头')
+
+    def test_configured_batch_size_keeps_phase_order_and_handles_tail(self):
+        self.detector.return_value['detections'].append({'bbox': [70, 60, 90, 80], 'confidence': .8})
+        run_id = self.prepare()['run_id']
+        groups = []
+
+        def analyze_group(paths, *_):
+            head_pass = paths[0].name.endswith('_head.png')
+            groups.append((head_pass, len(paths)))
+            state = '抬头' if head_pass else '写字'
+            return [{'state': state, 'evidence': '可见证据'} for _ in paths]
+
+        with patch.object(vlm, 'analyze_group', side_effect=analyze_group):
+            job = self.analyze(run_id, head_only=True, two_stage=True, batch_size=2)
+            self.assertEqual(job['status'], 'completed')
+            self.assertEqual(groups, [(True, 2), (True, 1), (False, 2), (False, 1)])
+            saved = store.read(run_id)
+            self.assertEqual(saved['analysis_sessions'][-1]['batch_size'], 2)
+            self.assertEqual([item['action']['state'] for item in saved['crops']], ['抬头'] * 3)
+            groups.clear()
+            job = self.analyze(run_id, batch_size=2, force=True)
+            self.assertEqual(job['status'], 'completed')
+            self.assertEqual(groups, [(False, 2), (False, 1)])
+
+        response = self.client.post(f'/api/actions/runs/{run_id}/analyze', json={'batch_size': 0})
+        self.assertEqual(response.status_code, 422)
 
     def test_two_stage_all_heads_are_published_before_any_context(self):
         record = self.prepare()

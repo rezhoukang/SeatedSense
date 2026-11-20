@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.aggregation import video_aggregate
 from backend.action_recognition import jobs, store
+from backend.action_recognition.decoding import MAX_BATCH_SIZE
 from . import common
 from .actions import _call
 
@@ -14,6 +15,7 @@ router = APIRouter(prefix='/api/video-aggregate', tags=['视频聚合推理'])
 class StartRequest(BaseModel):
     filename: str
     interval_seconds: float = Field(default=1, ge=0.1, le=86400, allow_inf_nan=False)
+    batch_size: int = Field(default=1, ge=1, le=MAX_BATCH_SIZE, strict=True)
 
 
 @router.post('/jobs')
@@ -22,7 +24,7 @@ def start(payload: StartRequest):
     source = common._safe_file(common.VIDEO_DIR, payload.filename)
     if source.suffix.lower() != '.mp4':
         raise HTTPException(status_code=400, detail='视频聚合支持 MP4 文件')
-    return _call(video_aggregate.start, source, payload.interval_seconds)
+    return _call(video_aggregate.start, source, payload.interval_seconds, payload.batch_size)
 
 
 @router.get('/jobs/active')

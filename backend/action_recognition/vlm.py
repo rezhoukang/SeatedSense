@@ -137,15 +137,36 @@ def parse_response(text: str, allowed_states: list[str] | tuple[str, ...] | None
             "uncertainty": value.get("uncertainty", "").strip()[:400]}
 
 
-def cache_key(path: Path, key: str, quantization: str, prompt_config: dict | None = None, experiment: str = 'A') -> str:
+def cache_key(path: Path, key: str, quantization: str, prompt_config: dict | None = None,
+              experiment: str = 'A', batch_size: int = 1) -> str:
     profile = prompts.load() if prompt_config is None else prompts.normalize(prompt_config)
     digest = hashlib.sha256(path.read_bytes())
     digest.update(f"{MODELS[key]}|{quantization}|{PROMPT_VERSION}|{prompts.identifier(profile)}|{prompts.compile_prompt(profile)}".encode())
     digest.update(json.dumps(decoding.parameters(experiment), sort_keys=True).encode())
+    if batch_size > 1:
+        digest.update(f"|batch_size={batch_size}".encode())
     return digest.hexdigest()
 
 
 def analyze(path: Path, key: str = DEFAULT_MODEL, quantization: str = "4bit", prompt_config: dict | None = None, experiment: str = 'A') -> dict:
+    result, = _analyze_paths([path], key, quantization, prompt_config, experiment)
+    if isinstance(result, Exception):
+        raise result
+    return result
+
+
+def analyze_group(paths: list[Path], key: str, quantization: str, prompt_config: dict,
+                  experiment: str) -> list[dict | Exception]:
+    if len(paths) == 1:
+        try:
+            return [analyze(paths[0], key, quantization, prompt_config, experiment)]
+        except Exception as error:
+            return [error]
+    return _analyze_paths(paths, key, quantization, prompt_config, experiment)
+
+
+def _analyze_paths(paths: list[Path], key: str, quantization: str,
+                   prompt_config: dict | None, experiment: str) -> list[dict | Exception]:
     with _lock:
         import torch
 
@@ -155,14 +176,27 @@ def analyze(path: Path, key: str = DEFAULT_MODEL, quantization: str = "4bit", pr
         load_started = time.perf_counter()
         model, processor = _load(key, quantization)
         load_seconds = time.perf_counter() - load_started
-        with Image.open(path) as opened:
-            image = opened.convert("RGB")
-        # Bound visual-token use without stretching or synthesizing detail.
-        image.thumbnail((768, 768), Image.Resampling.LANCZOS)
-        messages = [{"role": "user", "content": [{"type": "image", "image": image},
-                                                  {"type": "text", "text": prompts.compile_prompt(profile)}]}]
-        inputs = processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
-                                               return_dict=True, return_tensors="pt")
+        prompt = prompts.compile_prompt(profile)
+        outcomes: dict[int, dict | Exception] = {}
+        messages, indices = [], []
+        for index, path in enumerate(paths):
+            try:
+                with Image.open(path) as opened:
+                    image = opened.convert("RGB")
+            except OSError as error:
+                outcomes[index] = error
+                continue
+            image.thumbnail((768, 768), Image.Resampling.LANCZOS)
+            messages.append([{"role": "user", "content": [{"type": "image", "image": image},
+                                                            {"type": "text", "text": prompt}]}])
+            indices.append(index)
+        size = len(messages)
+        if not size:
+            return [outcomes[index] for index in range(len(paths))]
+        inputs = processor.apply_chat_template(
+            messages if size > 1 else messages[0], tokenize=True, add_generation_prompt=True,
+            return_dict=True, return_tensors="pt", **({"padding": True, "padding_side": "left"} if size > 1 else {}),
+        )
         inputs = {name: value.to(model.device) for name, value in inputs.items()}
         device = model.device
         gpu = device.type == 'cuda'
@@ -170,22 +204,31 @@ def analyze(path: Path, key: str = DEFAULT_MODEL, quantization: str = "4bit", pr
             torch.cuda.synchronize(device)
             torch.cuda.reset_peak_memory_stats(device)
         started = time.perf_counter()
-        with torch.inference_mode():
-            generated = model.generate(**inputs, **generation)
+        try:
+            with torch.inference_mode():
+                generated = model.generate(**inputs, **generation)
+        except torch.cuda.OutOfMemoryError as error:
+            if size > 1:
+                raise RuntimeError(f"VLM 一批 {size} 人时显存不足，请调小每批人数后重试") from error
+            raise
         if gpu:
             torch.cuda.synchronize(device)
-        metrics = {'generation_seconds': round(time.perf_counter() - started, 4),
-                   'model_load_seconds': round(load_seconds, 4), 'cold_load': cold_load,
-                   'generated_tokens': int(generated.shape[1] - inputs['input_ids'].shape[1]),
+        metrics = {'generation_seconds': round((time.perf_counter() - started) / size, 4),
+                   'model_load_seconds': round(load_seconds / size, 4), 'cold_load': cold_load,
                    'peak_allocated_mib': round(torch.cuda.max_memory_allocated(device) / 1024**2, 1) if gpu else None,
-                   'cuda_device': str(device) if gpu else None}
-        answer = processor.batch_decode(generated[:, inputs["input_ids"].shape[1]:],
-                                        skip_special_tokens=True)[0]
-        try:
-            result = parse_response(answer, prompts.states(profile))
-        except ValueError as error:
-            # Keep measurement and raw output for failed/truncated experiment responses too.
-            raise ResponseError(str(error), metrics, answer) from error
-        return {**result, "model": MODELS[key], "quantization": quantization,
-                'decoding': decoding.describe(experiment), 'metrics': metrics,
-                "prompt_version": PROMPT_VERSION, "prompt_config_id": prompts.identifier(profile)}
+                   'cuda_device': str(device) if gpu else None, 'batch_size': size}
+        tokens = generated[:, inputs["input_ids"].shape[1]:]
+        counts = [tokens.shape[1]] * size
+        if size > 1 and model.generation_config.pad_token_id is not None:
+            counts = tokens.ne(model.generation_config.pad_token_id).sum(dim=1).tolist()
+        allowed = prompts.states(profile)
+        metadata = {"model": MODELS[key], "quantization": quantization,
+                    'decoding': decoding.describe(experiment), "prompt_version": PROMPT_VERSION,
+                    "prompt_config_id": prompts.identifier(profile)}
+        for index, answer, count in zip(indices, processor.batch_decode(tokens, skip_special_tokens=True), counts, strict=True):
+            sample_metrics = {**metrics, 'generated_tokens': count}
+            try:
+                outcomes[index] = {**parse_response(answer, allowed), **metadata, 'metrics': sample_metrics}
+            except ValueError as error:
+                outcomes[index] = ResponseError(str(error), sample_metrics, answer)
+        return [outcomes[index] for index in range(len(paths))]

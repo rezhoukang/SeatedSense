@@ -24,7 +24,7 @@ def emit(progress: Progress | None, stage: str, message: str, current: int = 0,
 
 
 def analyze_heads(image, targets: list[dict], directory: Path | None = None,
-                  progress: Progress | None = None) -> dict:
+                  progress: Progress | None = None, *, batch_size: int = 1) -> dict:
     profile = head_only.profile()
     context_profile = two_stage.context_profile(prompts.load())
     profile_id = prompts.identifier(profile)
@@ -59,7 +59,7 @@ def analyze_heads(image, targets: list[dict], directory: Path | None = None,
                             'context_compiled_prompt': prompts.compile_prompt(context_profile),
                             'two_stage': True, 'expansion': expansion.to_dict(),
                             'model': vlm.MODELS[vlm.DEFAULT_MODEL], 'quantization': '4bit',
-                            'experiment': 'A', 'results': records}
+                            'experiment': 'A', 'batch_size': batch_size, 'results': records}
                 (root / 'record.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
 
         def report(phase, current, total):
@@ -69,7 +69,7 @@ def analyze_heads(image, targets: list[dict], directory: Path | None = None,
                  pass_name=phase, pass_current=current, pass_total=total,
                  preview_targets=copy.deepcopy(targets))
 
-        def publish(entry, phase, result, error):
+        def publish(entry, phase, result, error, _elapsed):
             if error:
                 action = {**(entry['target'].get('action') or {}), 'source': 'vlm',
                           'status': 'failed', 'error': str(error), 'two_stage': True}
@@ -84,10 +84,11 @@ def analyze_heads(image, targets: list[dict], directory: Path | None = None,
         if entries:
             vision.clear_model_cache()
         report('head', 0, len(entries))
-        two_stage.run_batch(entries, vlm.DEFAULT_MODEL, '4bit', profile, context_profile, 'A', report, publish)
+        two_stage.run_batch(entries, vlm.DEFAULT_MODEL, '4bit', profile, context_profile, 'A', report, publish,
+                            batch_size=batch_size)
         persist()
     return {'enabled': True, 'two_stage': True, 'model': vlm.MODELS[vlm.DEFAULT_MODEL], 'quantization': '4bit',
-            'experiment': 'A', 'expansion': expansion.to_dict(), 'prompt_config_id': profile_id,
+            'experiment': 'A', 'batch_size': batch_size, 'expansion': expansion.to_dict(), 'prompt_config_id': profile_id,
             'count': len(targets), 'completed': sum(t.get('action', {}).get('status') == 'done' for t in targets),
             'failed': sum(t.get('action', {}).get('status') == 'failed' for t in targets),
             'elapsed_seconds': round(time.perf_counter() - started, 3)}

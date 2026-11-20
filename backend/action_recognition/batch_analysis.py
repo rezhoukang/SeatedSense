@@ -1,7 +1,6 @@
 """Persistent batch-wide Head pass, then expanded-context pass."""
 import copy
 import hashlib
-import time
 
 from . import decoding, head_only, prompts, store, two_stage
 
@@ -10,6 +9,7 @@ def run(job_id, event, record, items, model, quantization, force, profile, exper
     from . import jobs
 
     entries = []
+    batch_size = session.get('batch_size', 1)
     context = session['context_profile']
     root = store.folder(record['run_id'])
     for item in items:
@@ -17,7 +17,7 @@ def run(job_id, event, record, items, model, quantization, force, profile, exper
             return
         head_path, head_file = head_only.input_file(record, item)
         context_path = root / item['marked_file']
-        key = two_stage.cache_key(head_path, context_path, model, quantization, profile, context, experiment)
+        key = two_stage.cache_key(head_path, context_path, model, quantization, profile, context, experiment, batch_size)
         measurement = {'crop_id': item['crop_id'], 'source': item['source'], 'revision': item['revision'],
                        'region_bbox': list(item['head_bbox']), 'context_region_bbox': list(item['region_bbox']),
                        'input_sha256': hashlib.sha256(head_path.read_bytes()).hexdigest(),
@@ -31,7 +31,7 @@ def run(job_id, event, record, items, model, quantization, force, profile, exper
         item.update(status='pending', action=None, analysis_key=None)
         item.pop('error', None)
         item.pop('elapsed_seconds', None)
-        entries.append({'item': item, 'measurement': measurement, 'key': key, 'started': None,
+        entries.append({'item': item, 'measurement': measurement, 'key': key,
                         'head_path': head_path, 'head_file': head_file, 'head_bbox': list(item['head_bbox']),
                         'context_path': context_path, 'context_file': item['marked_file'],
                         'context_bbox': list(item['region_bbox'])})
@@ -43,8 +43,10 @@ def run(job_id, event, record, items, model, quantization, force, profile, exper
                     progress=jobs.get(job_id)['cached'] + (current / 2 if phase == 'head' else (total + current) / 2),
                     message=f'{label} {current}/{total}')
 
-    def publish(entry, phase, result, error):
+    def publish(entry, phase, result, error, elapsed):
         item, measurement = entry['item'], entry['measurement']
+        measurement['elapsed_seconds'] = round(measurement.get('elapsed_seconds', 0) + elapsed, 3)
+        item['elapsed_seconds'] = measurement['elapsed_seconds']
         if error:
             item.update(status='failed', error=str(error), analysis_key=None)
             measurement.pop('action', None)
@@ -65,20 +67,8 @@ def run(job_id, event, record, items, model, quantization, force, profile, exper
             item.pop('error', None)
         store.write(record)
 
-    # Track compute time per target, excluding time spent on other targets between passes.
-    started = {}
-    def timed_progress(phase, current, total):
-        if (phase, current - 1) in started:
-            entry = entries[current - 1]
-            elapsed = time.perf_counter() - started.pop((phase, current - 1))
-            entry['measurement']['elapsed_seconds'] = round(entry['measurement'].get('elapsed_seconds', 0) + elapsed, 3)
-            entry['item']['elapsed_seconds'] = entry['measurement']['elapsed_seconds']
-        if current < total:
-            started[(phase, current)] = time.perf_counter()
-        progress(phase, current, total)
-
     two_stage.run_batch(entries, model, quantization, profile, context, experiment,
-                        timed_progress, publish, event.is_set)
+                        progress, publish, event.is_set, batch_size=batch_size)
     for row in session['results']:
         if event.is_set() and row.get('status') not in ('done', 'failed'):
             row['status'] = 'cancelled'

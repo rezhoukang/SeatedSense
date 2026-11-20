@@ -123,6 +123,7 @@ function syncAggregateControls() {
   el('aggImageGrid').inert = AGG_BUSY;
   el('aggFaceRecognition').disabled = AGG_BUSY;
   el('aggMultimodal').disabled = AGG_BUSY;
+  syncMultimodal();
   el('aggImageGrid').querySelectorAll('input, button').forEach(node => { node.disabled = busy; });
 }
 
@@ -134,6 +135,7 @@ function setAggregateBusy(value) {
 function syncMultimodal() {
   const multimodal = el('aggMultimodal');
   el('aggMultimodalHint').hidden = !multimodal.checked;
+  el('aggVlmBatchSize').disabled = AGG_BUSY || !multimodal.checked;
 }
 
 function hasAction(target) {
@@ -472,7 +474,8 @@ async function startAggregateBatch(endpoint, payload, errorSource) {
   try {
     const job = await api(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, multimodal: !!el('aggMultimodal').checked }),
+      body: JSON.stringify({ ...payload, multimodal: el('aggMultimodal').checked,
+        batch_size: Number(el('aggVlmBatchSize').value) }),
     });
     await followBatch(job, renderAggregateResult, trackJob);
   } catch (error) { showAggregateError(error, errorSource); }

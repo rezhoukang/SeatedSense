@@ -1,7 +1,7 @@
 import { el, esc, api } from './core.js?v=95';
 import { bindImageHover } from './preview.js?v=95';
 import { getPromptStates, initPromptEditor, loadActionPrompts } from './action-prompts.js?v=105';
-import { renderExperiments } from './action-experiments.js?v=105';
+import { renderExperiments } from './action-experiments.js?v=133';
 
 // Independent module: anonymous Head IDs, original-image crops, local VLM only.
 let images = [], record = null, activeCrop = '', activeJob = null, timer = null;
@@ -34,7 +34,7 @@ function sync() {
   el('actTwoStage').disabled = running || !el('actHeadOnly').checked;
   for (const id of ['actModel', 'actQuantization', 'actDownload', 'actUnload', 'actRun', 'actSide', 'actTop',
     'actBelow', 'actSource', 'actX1', 'actY1', 'actX2', 'actY2', 'actUpload', 'actRefresh', 'actSelectAll',
-    'actCropSelectAll', 'actDraw', 'actResetRegion', 'actDefaultExpansion', 'actExperiment', 'actForce', 'actHeadOnly']) el(id).disabled = running;
+    'actCropSelectAll', 'actDraw', 'actResetRegion', 'actDefaultExpansion', 'actExperiment', 'actVlmBatchSize', 'actForce', 'actHeadOnly']) el(id).disabled = running;
   el('actImageGrid').querySelectorAll('input').forEach(input => { input.disabled = running; });
   el('actCropGrid').querySelectorAll('input, button').forEach(input => { input.disabled = running; });
 }
@@ -246,7 +246,11 @@ el('actDefaultExpansion').addEventListener('click', () => {
   previewExpansion();
 });
 async function startAnalysis(ids) {
-  watch(await api(`/api/actions/runs/${record.run_id}/analyze`, json({ ...config(), crop_ids: ids, force: !!el('actForce').checked, experiment: el('actExperiment').value, head_only: el('actHeadOnly').checked, two_stage: el('actTwoStage').checked })));
+  watch(await api(`/api/actions/runs/${record.run_id}/analyze`, json({
+    ...config(), crop_ids: ids, force: !!el('actForce').checked, experiment: el('actExperiment').value,
+    batch_size: Number(el('actVlmBatchSize').value), head_only: el('actHeadOnly').checked,
+    two_stage: el('actTwoStage').checked,
+  })));
 }
 el('actHeadOnly').addEventListener('change', () => {
   el('actForce').checked = true;

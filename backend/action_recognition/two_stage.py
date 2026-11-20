@@ -1,6 +1,7 @@
 """Head orientation followed by context actions, with explicit suspected fallbacks."""
 import copy
 import hashlib
+import time
 
 from . import prompts, vlm
 
@@ -26,10 +27,10 @@ def context_profile(config: dict) -> dict:
     return prompts.normalize(value)
 
 
-def cache_key(head_path, context_path, model, quantization, head_profile, context, experiment):
+def cache_key(head_path, context_path, model, quantization, head_profile, context, experiment, batch_size=1):
     parts = [VERSION,
-             vlm.cache_key(head_path, model, quantization, head_profile, experiment),
-             vlm.cache_key(context_path, model, quantization, context, experiment)]
+             vlm.cache_key(head_path, model, quantization, head_profile, experiment, batch_size),
+             vlm.cache_key(context_path, model, quantization, context, experiment, batch_size)]
     return hashlib.sha256('|'.join(parts).encode()).hexdigest()
 
 
@@ -68,31 +69,38 @@ def combine(head: dict, second: dict) -> dict:
 
 
 def run_batch(entries, model, quantization, head_profile, context, experiment,
-              progress, publish, cancelled=lambda: False):
+              progress, publish, cancelled=lambda: False, *, batch_size=1):
     """Publish every Head result before any expanded-context model call."""
     heads = {}
     total = len(entries)
     for phase in ('head', 'context'):
-        for index, entry in enumerate(entries):
+        profile = head_profile if phase == 'head' else context
+        for start in range(0, total, batch_size):
             if cancelled():
                 return
-            progress(phase, index, total)
-            if phase == 'context' and index not in heads:
-                progress(phase, index + 1, total)
-                continue
-            try:
-                result = vlm.analyze(entry[f'{phase}_path'], model, quantization,
-                                     head_profile if phase == 'head' else context, experiment)
-                # Own the result: mocks and model adapters may reuse dictionaries.
-                result = copy.deepcopy(result)
-                result.update(input_file=entry[f'{phase}_file'], region_bbox=entry[f'{phase}_bbox'])
-                if phase == 'head':
-                    heads[index] = result
-                    publish(entry, phase, result, None)
-                else:
-                    publish(entry, phase, combine(heads[index], result), None)
-            except Exception as error:
-                publish(entry, phase, heads.get(index), error)
-                if isinstance(error, RuntimeError):
-                    raise
-            progress(phase, index + 1, total)
+            progress(phase, start, total)
+            end = min(start + batch_size, total)
+            indices = [index for index in range(start, end) if phase == 'head' or index in heads]
+            if indices:
+                paths = [entries[index][f'{phase}_path'] for index in indices]
+                started = time.perf_counter()
+                try:
+                    results = vlm.analyze_group(paths, model, quantization, profile, experiment)
+                except Exception as error:
+                    results = [error] * len(indices)
+                elapsed = (time.perf_counter() - started) / len(indices)
+                for index, result in zip(indices, results, strict=True):
+                    entry = entries[index]
+                    if isinstance(result, Exception):
+                        publish(entry, phase, heads.get(index), result, elapsed)
+                        if isinstance(result, RuntimeError):
+                            raise result
+                        continue
+                    result = copy.deepcopy(result)
+                    result.update(input_file=entry[f'{phase}_file'], region_bbox=entry[f'{phase}_bbox'])
+                    if phase == 'head':
+                        heads[index] = result
+                    else:
+                        result = combine(heads[index], result)
+                    publish(entry, phase, result, None, elapsed)
+            progress(phase, end, total)

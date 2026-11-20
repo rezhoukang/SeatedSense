@@ -284,7 +284,7 @@ def render(image: np.ndarray, targets: list[dict]) -> Image.Image:
 
 def aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: bool = True,
                     multimodal: bool = False, progress: aggregate_actions.Progress | None = None,
-                    mirror_selection: bool = True) -> dict:
+                    mirror_selection: bool = True, batch_size: int = 1) -> dict:
     aggregate_actions.emit(progress, 'prepare', '准备图片与模型资源')
     if multimodal:
         with action_jobs.mutation():
@@ -292,13 +292,14 @@ def aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: bo
             if not ready['available']:
                 raise ValueError(ready['message'])
             vlm.unload()
-            return _aggregate_image(src, face=face, pose=pose, save=save, multimodal=True, progress=progress, mirror_selection=mirror_selection)
+            return _aggregate_image(src, face=face, pose=pose, save=save, multimodal=True, progress=progress,
+                                    mirror_selection=mirror_selection, batch_size=batch_size)
     return _aggregate_image(src, face=face, pose=pose, save=save, progress=progress, mirror_selection=mirror_selection)
 
 
 def _aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: bool = True,
                      multimodal: bool = False, progress: aggregate_actions.Progress | None = None,
-                    mirror_selection: bool = True) -> dict:
+                     mirror_selection: bool = True, batch_size: int = 1) -> dict:
     """一次跑完 目标检测 → 人脸识别 → 姿势检测绑定，返回结构化结果 + 带标注的结果图。
 
     勾选「多模态姿态识别」时，固定采用先全体 Head、再全体扩展 ROI 的策略一：
@@ -371,7 +372,7 @@ def _aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: b
     elif multimodal:
         steps['pose'] = {'enabled': False, 'reason': '动作判断改用 VLM，不运行 Pose 规则'}
         directory = RESULT_DIR / 'vlm' / uuid.uuid4().hex if save else None
-        steps['multimodal'] = aggregate_actions.analyze_heads(image, targets, directory, progress)
+        steps['multimodal'] = aggregate_actions.analyze_heads(image, targets, directory, progress, batch_size=batch_size)
     else:
         mark = time.perf_counter()
         aggregate_actions.emit(progress, 'pose', '正在执行 Pose 姿势检测与绑定')

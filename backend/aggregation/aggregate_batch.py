@@ -40,7 +40,7 @@ def persist(job_id: str) -> None:
 
 
 def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | None = None,
-          relative_paths: list[str] | None = None, mirror: bool = False) -> dict:
+          relative_paths: list[str] | None = None, mirror: bool = False, batch_size: int = 1) -> dict:
     if not sources:
         raise ValueError('请选择需要批量推理的图片')
     if mirror and multimodal:
@@ -70,7 +70,7 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
             'results': [{'source': name, 'source_file': f'{index:04d}{path.suffix}' if display_names is not None else path.name,
                          'relative_path': relative_paths[index],
                          'status': 'waiting'} for index, (path, name) in enumerate(zip(sources, names))],
-            'options': {'face': False, 'pose': False, 'multimodal': multimodal},
+            'options': {'face': False, 'pose': False, 'multimodal': multimodal, 'batch_size': batch_size},
         }
 
     def update(**values):
@@ -116,7 +116,8 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
                     snapshot = root / 'sources' / row['source_file']
                     shutil.copyfile(source, snapshot)
                     result = aggregate.aggregate_image(snapshot, face=False, pose=False,
-                                                       multimodal=multimodal, progress=progress, mirror_selection=not mirror)
+                                                       multimodal=multimodal, progress=progress, mirror_selection=not mirror,
+                                                       batch_size=batch_size)
                     rendered = aggregate.RESULT_DIR / result['result']
                     destination = root / 'results' / rendered.name
                     shutil.copyfile(rendered, destination)

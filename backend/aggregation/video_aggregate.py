@@ -105,7 +105,7 @@ def extract(record: dict, event, job_id: str) -> None:
         capture.release()
 
 
-def start(source: Path, interval_seconds: float) -> dict:
+def start(source: Path, interval_seconds: float, batch_size: int = 1) -> dict:
     if not math.isfinite(interval_seconds) or interval_seconds <= 0:
         raise ValueError('抽帧间隔必须大于 0 秒')
     if not jobs._worker.acquire(blocking=False):
@@ -152,7 +152,7 @@ def start(source: Path, interval_seconds: float) -> dict:
                                'decoding': decoding.describe('A'),
                                'prompt_config_id': profile_id, 'context_prompt_config_id': prompts.identifier(context),
                                'context_profile': context, 'head_only': True, 'two_stage': True,
-                               'force': True, 'total': len(record['crops']), 'results': []}
+                               'force': True, 'batch_size': batch_size, 'total': len(record['crops']), 'results': []}
                     record['analysis_sessions'] = [session]
                     jobs.update(job_id, total=len(record['crops']), progress=0)
                     started = time.perf_counter()

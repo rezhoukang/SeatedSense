@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from urllib.parse import quote
 from typing import Literal
 
+from backend.action_recognition.decoding import MAX_BATCH_SIZE
 from backend.aggregation import aggregate
 from backend.aggregation import aggregate_jobs
 from backend.aggregation import aggregate_batch
@@ -21,6 +22,7 @@ class AggregateRequest(BaseModel):
     """仅保留人脸与多模态姿态开关，多模态固定采用两阶段策略一。"""
     face: bool = True
     multimodal: bool = False
+    batch_size: int = Field(default=1, ge=1, le=MAX_BATCH_SIZE, strict=True)
 
     def options(self):
         return {**self.model_dump(), 'pose': False}
@@ -30,6 +32,7 @@ class BatchRequest(BaseModel):
     model_config = {'extra': 'forbid'}
     filenames: list[str] = Field(min_length=1, max_length=1000)
     multimodal: bool = False
+    batch_size: int = Field(default=1, ge=1, le=MAX_BATCH_SIZE, strict=True)
 
 
 class HistorySelection(BaseModel):
@@ -45,6 +48,7 @@ class HistoryExport(BaseModel):
 
 class HistoryRerun(HistorySelection):
     multimodal: bool = False
+    batch_size: int = Field(default=1, ge=1, le=MAX_BATCH_SIZE, strict=True)
 
 
 class FolderCreate(BaseModel):
@@ -131,7 +135,8 @@ def history_rerun(payload: HistoryRerun):
                                      row['source_file']) for row in records]
         common._require_head_detection()
         paths = image_folders.paths()
-        return aggregate_batch.start(sources, payload.multimodal, display_names=[row['source'] for row in records],
+        return aggregate_batch.start(sources, payload.multimodal, batch_size=payload.batch_size,
+                                     display_names=[row['source'] for row in records],
                                      relative_paths=[row.get('relative_path') or paths.get(
                                          row['source_file'], paths.get(row['source'], row['source']))
                                                      for row in records])
@@ -149,7 +154,7 @@ def start_batch(payload: BatchRequest):
         raise HTTPException(status_code=400, detail='只能批量聚合图片')
     try:
         paths = image_folders.paths()
-        return aggregate_batch.start(sources, payload.multimodal,
+        return aggregate_batch.start(sources, payload.multimodal, batch_size=payload.batch_size,
                                      relative_paths=[paths.get(source.name, source.name) for source in sources])
     except RuntimeError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error

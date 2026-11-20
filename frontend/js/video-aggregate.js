@@ -10,7 +10,7 @@ const fail = error => { el('vaggError').textContent = error.message || String(er
 
 function sync() {
   const busy = loading || !!job;
-  for (const id of ['vaggUpload', 'vaggVideo', 'vaggRefresh', 'vaggInterval']) el(id).disabled = busy;
+  for (const id of ['vaggUpload', 'vaggVideo', 'vaggRefresh', 'vaggInterval', 'vaggVlmBatchSize']) el(id).disabled = busy;
   el('vaggStart').disabled = busy || !el('vaggVideo').value;
   el('vaggCancel').hidden = !job;
 }
@@ -156,7 +156,9 @@ el('vaggInterval').addEventListener('change', () => metadata().catch(fail));
 el('vaggStart').addEventListener('click', () => operation(async () => {
   const interval = Number(el('vaggInterval').value);
   if (!Number.isFinite(interval) || interval < 0.1 || interval > 86400) throw new Error('抽帧间隔需在 0.1～86400 秒之间');
-  watch(await api(`${base}/jobs`, post({ filename: el('vaggVideo').value, interval_seconds: interval })));
+  watch(await api(`${base}/jobs`, post({
+    filename: el('vaggVideo').value, interval_seconds: interval, batch_size: Number(el('vaggVlmBatchSize').value),
+  })));
 }));
 el('vaggCancel').addEventListener('click', async () => {
   if (!job) return;

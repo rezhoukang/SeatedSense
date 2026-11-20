@@ -2,6 +2,7 @@
 from typing import Literal
 
 Experiment = Literal['A', 'B', 'C', 'D']
+MAX_BATCH_SIZE = 8
 PRESETS = {
     'A': ('A 基线', 1, 256),
     'B': ('B 束搜索', 2, 256),

@@ -41,6 +41,7 @@ class AnalyzeRequest(ModelRequest):
     crop_ids: list[str] = Field(default_factory=list, max_length=2000)
     force: bool = False
     experiment: decoding.Experiment = 'A'
+    batch_size: int = Field(default=1, ge=1, le=decoding.MAX_BATCH_SIZE, strict=True)
 
 
 def _call(function, *args):
@@ -129,7 +130,8 @@ def update_crop(run_id: str, crop_id: str, payload: RegionRequest):
 
 @router.post("/runs/{run_id}/analyze")
 def analyze(run_id: str, payload: AnalyzeRequest):
-    return _call(jobs.start_analysis, run_id, payload.crop_ids, payload.model, payload.quantization, payload.force, payload.experiment, payload.head_only, payload.two_stage)
+    return _call(jobs.start_analysis, run_id, payload.crop_ids, payload.model, payload.quantization, payload.force,
+                 payload.experiment, payload.head_only, payload.two_stage, payload.batch_size)
 
 
 @router.get("/runs/{run_id}/files/{filename:path}")

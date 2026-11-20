@@ -8,9 +8,9 @@ import { loadDatasets } from './js/training.js?v=95';
 import { loadAnnotateGrid } from './js/annotator.js?v=95';
 import { loadOutputs } from './js/outputs.js?v=95';
 import { loadHeadCuts } from './js/head-cuts.js?v=95';
-import { loadAggregate } from './js/aggregate.js?v=132';
-import { loadActions } from './js/actions.js?v=106';
-import { loadVideoAggregate } from './js/video-aggregate.js?v=110';
+import { loadAggregate } from './js/aggregate.js?v=133';
+import { loadActions } from './js/actions.js?v=133';
+import { loadVideoAggregate } from './js/video-aggregate.js?v=133';
 
 import { loadMirror } from './js/mirror-inference.js?v=129';
 

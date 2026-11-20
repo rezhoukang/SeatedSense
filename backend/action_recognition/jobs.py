@@ -123,7 +123,8 @@ def start_prepare(paths: list[Path], expansion: Expansion) -> dict:
         raise
 
 
-def start_analysis(run_id: str, crop_ids: list[str], model: str, quantization: str, force: bool, experiment: str = 'A', head_only: bool = False, two_stage_enabled: bool = False) -> dict:
+def start_analysis(run_id: str, crop_ids: list[str], model: str, quantization: str, force: bool, experiment: str = 'A', head_only: bool = False, two_stage_enabled: bool = False,
+                   batch_size: int = 1) -> dict:
     if not _worker.acquire(blocking=False):
         raise RuntimeError("已有动作识别任务正在运行")
     try:
@@ -161,7 +162,7 @@ def start_analysis(run_id: str, crop_ids: list[str], model: str, quantization: s
                        'prompt_config_id': profile_id, 'head_only': head_only,
                        'two_stage': two_stage_enabled, 'context_profile': context,
                        'context_prompt_config_id': prompts.identifier(context) if context is not None else None,
-                       'force': force, 'total': len(items), 'results': []}
+                       'force': force, 'batch_size': batch_size, 'total': len(items), 'results': []}
             record.setdefault('analysis_sessions', []).append(session)
             store.write(record)
             session_started = time.perf_counter()
@@ -188,48 +189,66 @@ def _analyze_items(job_id, event, record, items, model, quantization, force, pro
     if session.get('two_stage'):
         from . import batch_analysis
         return batch_analysis.run(job_id, event, record, items, model, quantization, force, profile, experiment, session)
-    for index, item in enumerate(items, 1):
+    batch_size = session.get('batch_size', 1)
+    head_only = bool(session.get('head_only'))
+    root = store.folder(record['run_id'])
+    for offset in range(0, len(items), batch_size):
         if event.is_set():
             break
-        path = store.folder(record['run_id']) / item["marked_file"]
-        update(job_id, message=f"动作分析 {index}/{len(items)}：{item['crop_id']}（首次需要加载模型）")
+        group = items[offset:offset + batch_size]
+        update(job_id, message=f"动作分析 {offset + 1}～{offset + len(group)}/{len(items)}")
         started = time.perf_counter()
-        measurement = {'crop_id': item['crop_id'], 'source': item['source'],
-                       'region_bbox': list(item['region_bbox']), 'revision': item['revision']}
-        try:
+        entries, pending = [], []
+        for item in group:
+            measurement = {'crop_id': item['crop_id'], 'source': item['source'],
+                           'region_bbox': list(item['region_bbox']), 'revision': item['revision'],
+                           'head_only': head_only, 'two_stage': False}
             input_file = item['marked_file']
-            if session.get('head_only'):
-                path, input_file = head_mode.input_file(record, item)
-                measurement['region_bbox'] = list(item['head_bbox'])
-            measurement['head_only'] = bool(session.get('head_only'))
-            measurement['input_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
-            key = vlm.cache_key(path, model, quantization, profile, experiment)
-            measurement['two_stage'] = bool(session.get('two_stage'))
-            if not force and item.get("analysis_key") == key and item.get("status") == "done":
-                update(job_id, cached=get(job_id)["cached"]+1)
-                measurement['cached'] = True
-            else:
-                result = vlm.analyze(path, model, quantization, profile, experiment)
-                item.update({"action": {**result, "two_stage": bool(session.get('two_stage')), "head_only": bool(session.get('head_only')), "input_file": input_file, "decoding": decoding.describe(experiment), "analyzed_at": store.now(), "prompt_config_id": profile_id}, "status": "done",
-                             "analysis_key": key, "elapsed_seconds": round(time.perf_counter()-started, 2)})
-                item.pop("error", None)
-            measurement.update(status='done', action=copy.deepcopy(item['action']))
+            key = outcome = None
+            try:
+                path = root / input_file
+                if head_only:
+                    path, input_file = head_mode.input_file(record, item)
+                    measurement['region_bbox'] = list(item['head_bbox'])
+                measurement['input_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+                key = vlm.cache_key(path, model, quantization, profile, experiment, batch_size)
+                if not force and item.get('analysis_key') == key and item.get('status') == 'done':
+                    measurement['cached'] = True
+                else:
+                    pending.append(path)
+            except Exception as error:
+                outcome = error
+            entries.append((item, measurement, input_file, key, outcome))
+
+        try:
+            results = iter(vlm.analyze_group(pending, model, quantization, profile, experiment) if pending else [])
         except Exception as error:
-            item.update({"status": "failed", "error": str(error), "action": None, "analysis_key": None})
-            item['elapsed_seconds'] = round(time.perf_counter()-started, 2)
-            update(job_id, errors=get(job_id)["errors"]+1)
-            measurement.update(status='failed', error=str(error),
-                               stages=getattr(error, 'stages', None),
-                               metrics=getattr(error, 'metrics', None),
-                               raw_response=getattr(error, 'raw_response', None))
-            # A failed model load / CUDA OOM is shared by every target; don't repeat it hundreds of times.
-            if isinstance(error, RuntimeError):
-                raise
-        finally:
-            measurement['elapsed_seconds'] = round(time.perf_counter()-started, 3)
+            results = iter([error] * len(pending))
+        elapsed = round((time.perf_counter() - started) / len(group), 3)
+
+        for index, (item, measurement, input_file, key, outcome) in enumerate(entries, offset + 1):
+            if outcome is None and not measurement.get('cached'):
+                outcome = next(results)
+            if isinstance(outcome, Exception):
+                item.update(status='failed', error=str(outcome), action=None, analysis_key=None, elapsed_seconds=elapsed)
+                update(job_id, errors=get(job_id)['errors'] + 1)
+                measurement.update(status='failed', error=str(outcome), stages=getattr(outcome, 'stages', None),
+                                   metrics=getattr(outcome, 'metrics', None), raw_response=getattr(outcome, 'raw_response', None))
+            else:
+                if outcome is not None:
+                    action = {**outcome, 'two_stage': False, 'head_only': head_only, 'input_file': input_file,
+                              'decoding': session['decoding'], 'analyzed_at': store.now(), 'prompt_config_id': profile_id}
+                    item.update(action=action, status='done', analysis_key=key, elapsed_seconds=elapsed)
+                    item.pop('error', None)
+                else:
+                    update(job_id, cached=get(job_id)['cached'] + 1)
+                measurement.update(status='done', action=copy.deepcopy(item['action']))
+            measurement['elapsed_seconds'] = elapsed
             session['results'].append(measurement)
             store.write(record)
-        update(job_id, progress=index)
+            if isinstance(outcome, RuntimeError):
+                raise outcome
+            update(job_id, progress=index)
 
 
 def start_download(model: str) -> dict:
