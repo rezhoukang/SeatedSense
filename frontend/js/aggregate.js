@@ -474,7 +474,8 @@ async function startAggregateBatch(endpoint, payload, errorSource) {
   try {
     const job = await api(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, multimodal: el('aggMultimodal').checked,
+      body: JSON.stringify({ ...payload, face: el('aggFaceRecognition').checked,
+        multimodal: el('aggMultimodal').checked,
         batch_size: Number(el('aggVlmBatchSize').value) }),
     });
     await followBatch(job, renderAggregateResult, trackJob);

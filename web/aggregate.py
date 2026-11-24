@@ -31,6 +31,7 @@ class AggregateRequest(BaseModel):
 class BatchRequest(BaseModel):
     model_config = {'extra': 'forbid'}
     filenames: list[str] = Field(min_length=1, max_length=1000)
+    face: bool = True
     multimodal: bool = False
     batch_size: int = Field(default=1, ge=1, le=MAX_BATCH_SIZE, strict=True)
 
@@ -47,6 +48,7 @@ class HistoryExport(BaseModel):
 
 
 class HistoryRerun(HistorySelection):
+    face: bool = True
     multimodal: bool = False
     batch_size: int = Field(default=1, ge=1, le=MAX_BATCH_SIZE, strict=True)
 
@@ -136,12 +138,15 @@ def history_rerun(payload: HistoryRerun):
         common._require_head_detection()
         paths = image_folders.paths()
         return aggregate_batch.start(sources, payload.multimodal, batch_size=payload.batch_size,
+                                     face=payload.face,
                                      display_names=[row['source'] for row in records],
                                      relative_paths=[row.get('relative_path') or paths.get(
                                          row['source_file'], paths.get(row['source'], row['source']))
                                                      for row in records])
     except FileNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 
@@ -155,7 +160,10 @@ def start_batch(payload: BatchRequest):
     try:
         paths = image_folders.paths()
         return aggregate_batch.start(sources, payload.multimodal, batch_size=payload.batch_size,
+                                     face=payload.face,
                                      relative_paths=[paths.get(source.name, source.name) for source in sources])
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 

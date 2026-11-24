@@ -271,7 +271,7 @@ class AggregateBatchTests(unittest.TestCase):
             unload.assert_called_once()
         self.assertEqual((result['status'], result['completed_images'], result['failed_images']), ('completed', 2, 0))
         self.assertEqual([row[0] for row in self.calls], ['a.png', 'b.png'])
-        self.assertTrue(all(not row[1]['face'] and not row[1]['pose'] and row[1]['multimodal'] for row in self.calls))
+        self.assertTrue(all(row[1]['face'] and not row[1]['pose'] and row[1]['multimodal'] for row in self.calls))
         self.assertTrue((aggregate_batch.directory(result['job_id']) / 'record.json').is_file())
         row = result['results'][0]['result']
         (self.uploads / 'a.png').unlink()
@@ -307,8 +307,13 @@ class AggregateBatchTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/aggregate/batch', json={'filenames': []}).status_code, 422)
         self.assertEqual(self.client.post('/api/aggregate/batch', json={'filenames': ['a.png', 'missing.png']}).status_code, 404)
         self.assertEqual(self.client.post('/api/aggregate/batch', json={'filenames': ['../a.png']}).status_code, 400)
-        self.assertEqual(self.client.post('/api/aggregate/batch', json={'filenames': ['a.png'], 'face': True}).status_code, 422)
+        self.assertEqual(self.client.post('/api/aggregate/batch', json={'filenames': ['a.png'], 'unknown_option': True}).status_code, 422)
         self.analyzer.assert_not_called()
+        faced = self.wait(self.client.post('/api/aggregate/batch', json={'filenames': ['a.png'], 'face': True}).json()['job_id'])
+        self.assertTrue(faced['options']['face'])
+        self.assertTrue(self.calls[-1][1]['face'])
+        self.analyzer.reset_mock()
+        self.calls.clear()
         with aggregate_jobs._runner:
             self.assertEqual(self.client.post('/api/aggregate/batch', json={'filenames': ['a.png']}).status_code, 409)
 

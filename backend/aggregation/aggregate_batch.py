@@ -42,11 +42,16 @@ def persist(job_id: str) -> None:
 
 
 def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | None = None,
-          relative_paths: list[str] | None = None, mirror: bool = False, batch_size: int = 1) -> dict:
+          relative_paths: list[str] | None = None, mirror: bool = False, batch_size: int = 1,
+          face: bool = False) -> dict:
     if not sources:
         raise ValueError('请选择需要批量推理的图片')
     if mirror and multimodal:
         raise ValueError('镜像推理仅支持目标检测')
+    if mirror:
+        # 镜像推理只做目标检测对比，人脸识别只在原图上做
+        face = False
+    face = bool(face)
     relative_paths = relative_paths if relative_paths is not None else [path.name for path in sources]
     names = display_names if display_names is not None else [PurePosixPath(path).name for path in relative_paths]
     if len(names) != len(sources) or len(relative_paths) != len(sources):
@@ -54,7 +59,8 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
     if not aggregate_jobs._runner.acquire(blocking=False):
         raise RuntimeError('已有聚合任务正在运行，请等待完成')
     job_id = uuid.uuid4().hex
-    plan = ['prepare', 'detect'] + (['multimodal'] if multimodal else []) + ['render']
+    # 多模态阶段内部先跑人脸识别，所以不单独占一个阶段；纯检测模式才把人脸识别列入进度
+    plan = ['prepare', 'detect'] + (['multimodal'] if multimodal else (['face'] if face else [])) + ['render']
     if mirror:
         plan += ['mirror_prepare', 'mirror_detect', 'mirror_render']
     with aggregate_jobs._lock:
@@ -72,7 +78,7 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
             'results': [{'source': name, 'source_file': f'{index:04d}{path.suffix}' if display_names is not None else path.name,
                          'relative_path': relative_paths[index],
                          'status': 'waiting'} for index, (path, name) in enumerate(zip(sources, names))],
-            'options': {'face': False, 'pose': False, 'multimodal': multimodal, 'batch_size': batch_size},
+            'options': {'face': face, 'pose': False, 'multimodal': multimodal, 'batch_size': batch_size},
         }
 
     def update(**values):
@@ -142,11 +148,11 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
                             row['status'] = 'waiting'
                         continue
                     if phase == 'finish':
-                        result = aggregate._aggregate_image(snapshot, face=False, pose=False, multimodal=True,
+                        result = aggregate._aggregate_image(snapshot, face=face, pose=False, multimodal=True,
                                                             progress=progress, batch_size=batch_size,
                                                             prepared_detection=prepared.pop(index))
                     else:
-                        result = aggregate.aggregate_image(snapshot, face=False, pose=False, multimodal=False,
+                        result = aggregate.aggregate_image(snapshot, face=face, pose=False, multimodal=False,
                                                            progress=progress, mirror_selection=not mirror, batch_size=batch_size)
                     rendered = aggregate.RESULT_DIR / result['result']
                     destination = root / 'results' / rendered.name

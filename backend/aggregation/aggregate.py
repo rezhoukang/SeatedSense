@@ -222,6 +222,50 @@ def detect_poses(src: Path) -> dict:
     return result
 
 
+FACE_LIBRARY_EMPTY = "人脸库为空：请先在「人脸检测」页导入学生花名册或添加人脸"
+
+
+def recognize_and_bind(image: np.ndarray, targets: list[dict]) -> dict:
+    """人脸识别 → 姓名贴到最贴合的人头（单图聚合与「补跑人脸」脚本共用）。
+
+    参数全部用本模块锁死的常量；识别到的姓名直接写进 targets（就地修改），
+    返回 {"faces": 明细, "step": steps["face"], "named": 贴到人头的姓名数}。
+    人脸库为空时抛 ValueError，调用方负责转成用户可读的错误。
+    """
+    if not face_recognition.list_entries():
+        raise ValueError(FACE_LIBRARY_EMPTY)
+    mark = time.perf_counter()
+    recognized = face_recognition.recognize_faces(
+        image, threshold=MATCH_THRESHOLD, detect_confidence=FACE_CONFIDENCE,
+        min_confidence=MIN_QUALITY_CONFIDENCE, min_size=MIN_FACE_PIXELS,
+        min_sharpness=MIN_FACE_SHARPNESS)
+    faces = recognized["faces"]
+    bindings = bind_faces(faces, targets)
+    named = 0
+    for record in faces:
+        binding = bindings.get(record["face_id"])
+        record["bind"] = binding
+        record["target_index"] = binding["target_index"] if binding else None
+        target = targets[binding["target_index"]] if binding else None
+        # 同一目标被多张脸命中时，先到先得（faces 已按人脸面积降序，大脸更可靠）
+        if target is None or record["status"] != "matched" or "name" in target:
+            continue
+        target.update({"name": record["match"]["name"], "entry_id": record["match"]["entry_id"],
+                       "similarity": record["match"]["similarity"],
+                       "photo_url": record["match"].get("photo_url"), "face_id": record["face_id"]})
+        named += 1
+    step = {"enabled": True, "threshold": MATCH_THRESHOLD,
+            "detect_confidence": FACE_CONFIDENCE,
+            "min_size": MIN_FACE_PIXELS, "min_sharpness": MIN_FACE_SHARPNESS,
+            "library_count": len(face_recognition.list_entries()),
+            "detected": recognized["detected"], "face_count": recognized["face_count"],
+            "matched": recognized["matched"], "unknown": recognized["unknown"],
+            "rejected": recognized["rejected"], "reassigned": recognized["reassigned"],
+            "truncated": recognized["truncated"], "named_targets": named,
+            "elapsed_seconds": round(time.perf_counter()-mark, 3)}
+    return {"faces": faces, "step": step, "named": named}
+
+
 # ---------------------------------------------------------------- 结果图
 
 def _font(size: int = 18):
@@ -345,37 +389,9 @@ def _aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: b
         steps["face"] = {"enabled": False, "reason": "未勾选人脸识别"}
     else:
         aggregate_actions.emit(progress, 'face', '正在执行人脸识别')
-        if not face_recognition.list_entries():
-            raise ValueError("人脸库为空：请先在「人脸检测」页导入学生花名册或添加人脸")
-        mark = time.perf_counter()
-        recognized = face_recognition.recognize_faces(
-            image, threshold=MATCH_THRESHOLD, detect_confidence=FACE_CONFIDENCE,
-            min_confidence=MIN_QUALITY_CONFIDENCE, min_size=MIN_FACE_PIXELS,
-            min_sharpness=MIN_FACE_SHARPNESS)
-        faces = recognized["faces"]
-        bindings = bind_faces(faces, targets)
-        named = 0
-        for record in faces:
-            binding = bindings.get(record["face_id"])
-            record["bind"] = binding
-            record["target_index"] = binding["target_index"] if binding else None
-            target = targets[binding["target_index"]] if binding else None
-            # 同一目标被多张脸命中时，先到先得（faces 已按人脸面积降序，大脸更可靠）
-            if target is None or record["status"] != "matched" or "name" in target:
-                continue
-            target.update({"name": record["match"]["name"], "entry_id": record["match"]["entry_id"],
-                           "similarity": record["match"]["similarity"],
-                           "photo_url": record["match"].get("photo_url"), "face_id": record["face_id"]})
-            named += 1
-        steps["face"] = {"enabled": True, "threshold": MATCH_THRESHOLD,
-                         "detect_confidence": FACE_CONFIDENCE,
-                         "min_size": MIN_FACE_PIXELS, "min_sharpness": MIN_FACE_SHARPNESS,
-                         "library_count": len(face_recognition.list_entries()),
-                         "detected": recognized["detected"], "face_count": recognized["face_count"],
-                         "matched": recognized["matched"], "unknown": recognized["unknown"],
-                         "rejected": recognized["rejected"], "reassigned": recognized["reassigned"],
-                         "truncated": recognized["truncated"], "named_targets": named,
-                         "elapsed_seconds": round(time.perf_counter()-mark, 3)}
+        outcome = recognize_and_bind(image, targets)
+        faces = outcome["faces"]
+        steps["face"] = outcome["step"]
         aggregate_actions.emit(progress, 'face', '人脸识别完成', 1, 1)
 
     # ---------- 3) 姿势检测 + 绑定 ----------
