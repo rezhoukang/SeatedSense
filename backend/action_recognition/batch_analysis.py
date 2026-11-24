@@ -38,9 +38,10 @@ def run(job_id, event, record, items, model, quantization, force, profile, exper
     store.write(record)
 
     def progress(phase, current, total):
-        label = '第一阶段：全部 Head 抬头/低头' if phase == 'head' else '第二阶段：全部扩展 ROI 补充'
+        label = '第一阶段：全部 Head 抬头/低头' if phase == 'head' else '第二阶段：待补充目标扩展 ROI'
+        completed = current / 2 if phase == 'head' else len(entries) * (len(entries) + current) / max(1, len(entries) + total)
         jobs.update(job_id, stage=phase, stage_current=current, stage_total=total,
-                    progress=jobs.get(job_id)['cached'] + (current / 2 if phase == 'head' else (total + current) / 2),
+                    progress=jobs.get(job_id)['cached'] + completed,
                     message=f'{label} {current}/{total}')
 
     def publish(entry, phase, result, error, elapsed):
@@ -55,15 +56,16 @@ def run(job_id, event, record, items, model, quantization, force, profile, exper
                                metrics=getattr(error, 'metrics', None), raw_response=getattr(error, 'raw_response', None))
             jobs.update(job_id, errors=jobs.get(job_id)['errors'] + 1)
         else:
+            provisional = phase == 'head' and not result.get('context_skipped')
             action = {**result, 'head_only': True, 'two_stage': True,
-                      'provisional': phase == 'head', 'decoding': decoding.describe(experiment),
+                      'provisional': provisional, 'decoding': decoding.describe(experiment),
                       'analyzed_at': store.now(), 'prompt_config_id': prompts.identifier(profile),
                       'input_file': entry[f'{phase}_file']}
-            item.update(action=action, status='pending_context' if phase == 'head' else 'done',
-                        analysis_key=None if phase == 'head' else entry['key'])
+            item.update(action=action, status='pending_context' if provisional else 'done',
+                        analysis_key=None if provisional else entry['key'])
             measurement.update(status=item['status'], action=copy.deepcopy(action))
             if phase == 'head':
-                measurement['stages'] = {'head': copy.deepcopy(result)}
+                measurement['stages'] = copy.deepcopy(result.get('stages') or {'head': result})
             item.pop('error', None)
         store.write(record)
 

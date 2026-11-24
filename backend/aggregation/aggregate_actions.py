@@ -63,9 +63,9 @@ def analyze_heads(image, targets: list[dict], directory: Path | None = None,
                 (root / 'record.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
 
         def report(phase, current, total):
-            label = '第一阶段：全部 Head 抬头/低头' if phase == 'head' else '第二阶段：全部扩展 ROI 补充'
+            label = '第一阶段：全部 Head 抬头/低头' if phase == 'head' else '第二阶段：待补充目标扩展 ROI'
             emit(progress, 'multimodal', f'{label} {current}/{total}',
-                 current + (total if phase == 'context' else 0), 2 * total,
+                 current + (len(entries) if phase == 'context' else 0), len(entries) + total,
                  pass_name=phase, pass_current=current, pass_total=total,
                  preview_targets=copy.deepcopy(targets))
 
@@ -74,8 +74,9 @@ def analyze_heads(image, targets: list[dict], directory: Path | None = None,
                 action = {**(entry['target'].get('action') or {}), 'source': 'vlm',
                           'status': 'failed', 'error': str(error), 'two_stage': True}
             else:
-                action = {**result, 'source': 'vlm', 'status': 'pending_context' if phase == 'head' else 'done',
-                          'provisional': phase == 'head', 'two_stage': True,
+                provisional = phase == 'head' and not result.get('context_skipped')
+                action = {**result, 'source': 'vlm', 'status': 'pending_context' if provisional else 'done',
+                          'provisional': provisional, 'two_stage': True,
                           'region_bbox': entry[f'{phase}_bbox'], 'prompt_config_id': profile_id}
             entry['target']['action'] = action
             records[entry['target_index']]['action'] = action

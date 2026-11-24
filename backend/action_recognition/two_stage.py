@@ -5,7 +5,7 @@ import time
 
 from . import prompts, vlm
 
-VERSION = 'head_context_strategy1_v2'
+VERSION = 'head_context_strategy1_v3'
 SUSPECTED = {'抬头': '疑似抬头', '低头': '疑似低头'}
 
 
@@ -72,15 +72,18 @@ def run_batch(entries, model, quantization, head_profile, context, experiment,
               progress, publish, cancelled=lambda: False, *, batch_size=1):
     """Publish every Head result before any expanded-context model call."""
     heads = {}
-    total = len(entries)
     for phase in ('head', 'context'):
         profile = head_profile if phase == 'head' else context
+        candidates = range(len(entries)) if phase == 'head' else list(heads)
+        total = len(candidates)
+        if phase == 'context' and not total:
+            progress(phase, 0, 0)
         for start in range(0, total, batch_size):
             if cancelled():
                 return
             progress(phase, start, total)
             end = min(start + batch_size, total)
-            indices = [index for index in range(start, end) if phase == 'head' or index in heads]
+            indices = candidates[start:end]
             if indices:
                 paths = [entries[index][f'{phase}_path'] for index in indices]
                 started = time.perf_counter()
@@ -99,7 +102,11 @@ def run_batch(entries, model, quantization, head_profile, context, experiment,
                     result = copy.deepcopy(result)
                     result.update(input_file=entry[f'{phase}_file'], region_bbox=entry[f'{phase}_bbox'])
                     if phase == 'head':
-                        heads[index] = result
+                        if result['state'] == '抬头':
+                            result = {**result, 'decision': 'head_confirmed', 'context_skipped': True,
+                                      'fallback': False, 'pipeline_version': VERSION, 'stages': {'head': result}}
+                        else:
+                            heads[index] = result
                     else:
                         result = combine(heads[index], result)
                     publish(entry, phase, result, None, elapsed)

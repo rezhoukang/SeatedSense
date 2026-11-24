@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -282,16 +283,30 @@ def render(image: np.ndarray, targets: list[dict]) -> Image.Image:
 
 # ---------------------------------------------------------------- 主流程
 
+@contextmanager
+def multimodal_session():
+    with action_jobs.mutation():
+        ready = vlm.status(vlm.DEFAULT_MODEL, '4bit')
+        if not ready['available']:
+            raise ValueError(ready['message'])
+        vlm.unload()
+        yield
+
+
+def detect_for_aggregation(src, image, progress, mirror_selection=True):
+    mark = time.perf_counter()
+    aggregate_actions.emit(progress, 'detect', '正在执行目标检测')
+    detection = detect_best_targets(src, image, progress) if mirror_selection else detect_targets(src)
+    elapsed = time.perf_counter() - mark
+    aggregate_actions.emit(progress, 'detect', f"目标检测完成：{len(detection['detections'])} 个人头", 1, 1)
+    return detection, elapsed
+
 def aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: bool = True,
                     multimodal: bool = False, progress: aggregate_actions.Progress | None = None,
                     mirror_selection: bool = True, batch_size: int = 1) -> dict:
     aggregate_actions.emit(progress, 'prepare', '准备图片与模型资源')
     if multimodal:
-        with action_jobs.mutation():
-            ready = vlm.status(vlm.DEFAULT_MODEL, '4bit')
-            if not ready['available']:
-                raise ValueError(ready['message'])
-            vlm.unload()
+        with multimodal_session():
             return _aggregate_image(src, face=face, pose=pose, save=save, multimodal=True, progress=progress,
                                     mirror_selection=mirror_selection, batch_size=batch_size)
     return _aggregate_image(src, face=face, pose=pose, save=save, progress=progress, mirror_selection=mirror_selection)
@@ -299,7 +314,7 @@ def aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: bo
 
 def _aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: bool = True,
                      multimodal: bool = False, progress: aggregate_actions.Progress | None = None,
-                     mirror_selection: bool = True, batch_size: int = 1) -> dict:
+                     mirror_selection: bool = True, batch_size: int = 1, prepared_detection=None) -> dict:
     """一次跑完 目标检测 → 人脸识别 → 姿势检测绑定，返回结构化结果 + 带标注的结果图。
 
     勾选「多模态姿态识别」时，固定采用先全体 Head、再全体扩展 ROI 的策略一：
@@ -311,19 +326,18 @@ def _aggregate_image(src: Path, *, face: bool = True, pose: bool = True, save: b
     image = read_image(src)
     height, width = image.shape[:2]
     steps: dict[str, dict] = {}
-    aggregate_actions.emit(progress, 'prepare', '图片准备完成', 1, 1)
-
-    # ---------- 1) 目标检测（固定：图片推理的目标检测）----------
-    mark = time.perf_counter()
-    aggregate_actions.emit(progress, 'detect', '正在执行目标检测')
-    detection = detect_best_targets(src, image, progress) if mirror_selection else detect_targets(src)
+    if prepared_detection is None:
+        aggregate_actions.emit(progress, 'prepare', '图片准备完成', 1, 1)
+        detection, detect_seconds = detect_for_aggregation(src, image, progress, mirror_selection)
+    else:
+        detection, detect_seconds = prepared_detection
+        started -= detect_seconds
     targets = detection["detections"]
-    aggregate_actions.emit(progress, 'detect', f'目标检测完成：{len(targets)} 个人头', 1, 1)
     steps["detect"] = {"enabled": True, "mode": detection["mode"], "weight": detection["weight"],
                        "imgsz": detection["imgsz"], "classes_used": detection["classes_used"],
                        "count": len(targets), "rule": detection["rule"], "fusion": detection["fusion"],
                        "mirror_selection": detection.get("mirror_selection"),
-                       "elapsed_seconds": round(time.perf_counter()-mark, 3)}
+                       "elapsed_seconds": round(detect_seconds, 3)}
 
     # ---------- 2) 人脸识别：姓名贴到最贴合的人头 ----------
     faces: list[dict] = []

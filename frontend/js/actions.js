@@ -1,7 +1,7 @@
 import { el, esc, api } from './core.js?v=95';
 import { bindImageHover } from './preview.js?v=95';
 import { getPromptStates, initPromptEditor, loadActionPrompts } from './action-prompts.js?v=105';
-import { renderExperiments } from './action-experiments.js?v=133';
+import { renderExperiments } from './action-experiments.js?v=134';
 
 // Independent module: anonymous Head IDs, original-image crops, local VLM only.
 let images = [], record = null, activeCrop = '', activeJob = null, timer = null;
@@ -136,7 +136,7 @@ function renderCrops() {
     card.innerHTML = `<div class="action-crop-title"><b>${esc(item.crop_id)}</b><input type="checkbox" aria-label="选择目标 ${esc(item.crop_id)}"></div>
       <img src="${esc(fileUrl(item.action?.input_file || item.marked_file, item.revision))}" alt="${esc(item.crop_id)} 目标裁剪" loading="lazy">
       <div class="action-crop-info"><span class="action-state${item.status === 'failed' ? ' is-failed' : state === '无法判断' ? ' is-uncertain' : ''}">${esc(state)}</span>
-      ${item.action?.two_stage ? '<p class="hint">两阶段策略一 · Head → 扩展 ROI</p>' : item.action?.head_only ? '<p class="hint">只测抬头低头 · Head ROI</p>' : ''}
+      ${item.action?.context_skipped ? '<p class="hint">Head 已确认抬头 · 已跳过扩展 ROI</p>' : item.action?.two_stage ? '<p class="hint">两阶段策略一 · Head → 扩展 ROI</p>' : item.action?.head_only ? '<p class="hint">只测抬头低头 · Head ROI</p>' : ''}
       ${item.action?.fallback ? '<p class="action-reason">规则兜底 · 非模型确认</p>' : ''}
       ${item.action?.state && !getPromptStates().includes(item.action.state) ? '<p class="hint">历史标签；重新分析后使用当前动作配置。</p>' : ''}
       <p class="action-evidence">${esc(item.action?.evidence || item.error || '检查范围后启动 VLM 分析')}</p>

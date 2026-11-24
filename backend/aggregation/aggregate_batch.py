@@ -6,6 +6,8 @@ import threading
 import time
 import uuid
 import cv2
+from contextlib import ExitStack
+from itertools import product
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
@@ -88,36 +90,64 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
             job = aggregate_jobs.JOBS[job_id]
             position = plan.index(stage)
             job.update(event)
-            job['percent'] = round(((job['image_index'] - 1) + (position + fraction) / len(plan)) / len(sources) * 100, 1)
+            index = job['image_index'] - 1
+            if multimodal:
+                # Prepare/detect every snapshot before switching to VLM/render.
+                units = 2 * index + position + fraction
+                if position >= 2:
+                    units += 2 * len(sources) - 2
+            else:
+                units = len(plan) * index + position + fraction
+            job['percent'] = round(units / (len(plan) * len(sources)) * 100, 1)
             for index, step in enumerate(job['stages']):
                 step['status'] = 'completed' if index < position or (index == position and fraction == 1) else 'running' if index == position else 'waiting'
 
     def work():
         update(status='running')
         root = directory(job_id)
+        session = ExitStack()
         try:
             (root / 'sources').mkdir(parents=True, exist_ok=True)
             (root / 'results').mkdir(exist_ok=True)
             if mirror:
                 (root / 'mirrors').mkdir()
                 (root / 'mirror-results').mkdir()
-            for index, source in enumerate(sources):
+            phases = ('detect', 'finish') if multimodal else ('single',)
+            prepared = {}
+            if multimodal:
+                session.enter_context(aggregate.multimodal_session())
+            for phase, index in product(phases, range(len(sources))):
                 aggregate_jobs.check_cancelled(job_id)
+                if phase == 'finish' and index not in prepared:
+                    continue
+                source = sources[index]
+                stage = 'multimodal' if phase == 'finish' else 'prepare'
                 update(source=names[index], image_index=index + 1, preview_targets=[],
-                       stage='prepare', message=f'准备第 {index + 1}/{len(sources)} 张图片', current=0, total=None)
+                       stage=stage, message=f'{aggregate_jobs.LABELS[stage]} · {index + 1}/{len(sources)}', current=0, total=None,
+                       pass_name=None, pass_current=0, pass_total=0)
                 with aggregate_jobs._lock:
                     job = aggregate_jobs.JOBS[job_id]
                     row = job['results'][index]
                     row['status'] = 'running'
                     for step in job['stages']:
-                        step['status'] = 'waiting'
+                        step['status'] = 'completed' if phase == 'finish' and step['key'] in ('prepare', 'detect') else 'waiting'
                 persist(job_id)
                 try:
                     snapshot = root / 'sources' / row['source_file']
-                    shutil.copyfile(source, snapshot)
-                    result = aggregate.aggregate_image(snapshot, face=False, pose=False,
-                                                       multimodal=multimodal, progress=progress, mirror_selection=not mirror,
-                                                       batch_size=batch_size)
+                    if phase != 'finish':
+                        shutil.copyfile(source, snapshot)
+                    if phase == 'detect':
+                        prepared[index] = aggregate.detect_for_aggregation(snapshot, aggregate.read_image(snapshot), progress)
+                        with aggregate_jobs._lock:
+                            row['status'] = 'waiting'
+                        continue
+                    if phase == 'finish':
+                        result = aggregate._aggregate_image(snapshot, face=False, pose=False, multimodal=True,
+                                                            progress=progress, batch_size=batch_size,
+                                                            prepared_detection=prepared.pop(index))
+                    else:
+                        result = aggregate.aggregate_image(snapshot, face=False, pose=False, multimodal=False,
+                                                           progress=progress, mirror_selection=not mirror, batch_size=batch_size)
                     rendered = aggregate.RESULT_DIR / result['result']
                     destination = root / 'results' / rendered.name
                     shutil.copyfile(rendered, destination)
@@ -154,8 +184,11 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
                     with aggregate_jobs._lock:
                         row.update(status='failed', error=str(error))
                         aggregate_jobs.JOBS[job_id]['failed_images'] += 1
-                update(percent=round((index + 1) / len(sources) * 100, 1),
-                       elapsed_seconds=round(time.time() - aggregate_jobs.JOBS[job_id]['created_at'], 1))
+                if multimodal:
+                    percent = 50 * ((phase == 'finish') + (index + 1) / len(sources))
+                else:
+                    percent = 100 * (index + 1) / len(sources)
+                update(percent=round(percent, 1), elapsed_seconds=round(time.time() - aggregate_jobs.JOBS[job_id]['created_at'], 1))
                 persist(job_id)
             job = aggregate_jobs.get(job_id)
             update(status='completed' if job['completed_images'] else 'failed', percent=100,
@@ -173,6 +206,7 @@ def start(sources: list[Path], multimodal: bool, *, display_names: list[str] | N
         except Exception as error:
             update(status='failed', error=str(error), message=str(error))
         finally:
+            session.close()
             update(elapsed_seconds=round(time.time() - aggregate_jobs.JOBS[job_id]['created_at'], 1))
             try:
                 persist(job_id)

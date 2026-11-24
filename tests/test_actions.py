@@ -250,6 +250,7 @@ class ActionApiTests(unittest.TestCase):
         ]
         for head, context, expected, decision in cases:
             with self.subTest(head=head, context=context):
+                self.analyzer.reset_mock()
                 self.analyzer.side_effect = [
                     {'state': head, 'evidence': 'Head 证据', 'uncertainty': '', 'metrics': {'generation_seconds': 1, 'generated_tokens': 10, 'peak_allocated_mib': 100}},
                     {'state': context, 'evidence': '扩展证据', 'uncertainty': '', 'metrics': {'generation_seconds': 2, 'generated_tokens': 20, 'peak_allocated_mib': 120}},
@@ -260,6 +261,12 @@ class ActionApiTests(unittest.TestCase):
                 action = saved['crops'][0]['action']
                 self.assertEqual((action['state'], action['decision']), (expected, decision))
                 self.assertEqual(action['fallback'], decision == 'fallback')
+                if head == '抬头':
+                    self.analyzer.assert_called_once()
+                    self.assertTrue(action['context_skipped'])
+                    self.assertEqual(set(action['stages']), {'head'})
+                    self.assertEqual(action['metrics'], action['stages']['head']['metrics'])
+                    continue
                 self.assertEqual(action['metrics']['generation_seconds'], 3)
                 self.assertEqual(action['metrics']['generated_tokens'], 30)
                 self.assertEqual(action['metrics']['peak_allocated_mib'], 120)
@@ -316,7 +323,7 @@ class ActionApiTests(unittest.TestCase):
         self.assertEqual(job['status'], 'cancelled')
         self.assertEqual(self.analyzer.call_count, 1)
         saved = store.read(record['run_id'])
-        self.assertTrue(saved['crops'][0]['action']['provisional'])
+        self.assertFalse(saved['crops'][0]['action']['provisional'])
         self.assertEqual(saved['analysis_sessions'][-1]['results'][0]['stages']['head']['state'], '抬头')
 
     def test_configured_batch_size_keeps_phase_order_and_handles_tail(self):
@@ -327,16 +334,16 @@ class ActionApiTests(unittest.TestCase):
         def analyze_group(paths, *_):
             head_pass = paths[0].name.endswith('_head.png')
             groups.append((head_pass, len(paths)))
-            state = '抬头' if head_pass else '写字'
-            return [{'state': state, 'evidence': '可见证据'} for _ in paths]
+            return [{'state': ('抬头' if '002_head' in path.name else '低头') if head_pass else '写字',
+                     'evidence': '可见证据'} for path in paths]
 
         with patch.object(vlm, 'analyze_group', side_effect=analyze_group):
             job = self.analyze(run_id, head_only=True, two_stage=True, batch_size=2)
             self.assertEqual(job['status'], 'completed')
-            self.assertEqual(groups, [(True, 2), (True, 1), (False, 2), (False, 1)])
+            self.assertEqual(groups, [(True, 2), (True, 1), (False, 2)])
             saved = store.read(run_id)
             self.assertEqual(saved['analysis_sessions'][-1]['batch_size'], 2)
-            self.assertEqual([item['action']['state'] for item in saved['crops']], ['抬头'] * 3)
+            self.assertEqual([item['action']['state'] for item in saved['crops']], ['写字', '抬头', '写字'])
             groups.clear()
             job = self.analyze(run_id, batch_size=2, force=True)
             self.assertEqual(job['status'], 'completed')

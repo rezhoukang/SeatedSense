@@ -252,9 +252,23 @@ class AggregateBatchTests(unittest.TestCase):
         self.fail('批量任务没有完成')
 
     def test_deduplicated_serial_batch_persists_images_and_results(self):
-        response = self.client.post('/api/aggregate/batch', json={'filenames': ['a.png', 'b.png', 'a.png'], 'multimodal': True})
-        self.assertEqual(response.status_code, 200, response.text)
-        result = self.wait(response.json()['job_id'])
+        order = []
+        def detect(path, image, progress):
+            order.append(path.name)
+            return {'source': path.name}, 0.1
+        def finish(path, **options):
+            self.assertEqual(order[:2], ['a.png', 'b.png'])
+            self.assertEqual(options['prepared_detection'][0]['source'], path.name)
+            order.append('finish')
+            return self.analyzer(path, **options)
+        with (patch.object(aggregate.vlm, 'status', return_value={'available': True}),
+              patch.object(aggregate.vlm, 'unload') as unload,
+              patch.object(aggregate, 'detect_for_aggregation', side_effect=detect),
+              patch.object(aggregate, '_aggregate_image', side_effect=finish)):
+            response = self.client.post('/api/aggregate/batch', json={'filenames': ['a.png', 'b.png', 'a.png'], 'multimodal': True})
+            self.assertEqual(response.status_code, 200, response.text)
+            result = self.wait(response.json()['job_id'])
+            unload.assert_called_once()
         self.assertEqual((result['status'], result['completed_images'], result['failed_images']), ('completed', 2, 0))
         self.assertEqual([row[0] for row in self.calls], ['a.png', 'b.png'])
         self.assertTrue(all(not row[1]['face'] and not row[1]['pose'] and row[1]['multimodal'] for row in self.calls))
