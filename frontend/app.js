@@ -14,6 +14,13 @@ import { loadVideoAggregate } from './js/video-aggregate.js?v=133';
 
 import { loadMirror } from './js/mirror-inference.js?v=129';
 
+for (const id of ['aggVlmBatchSize', 'vaggVlmBatchSize', 'actVlmBatchSize']) {
+  const select = document.getElementById(id);
+  for (let size = 2; size <= 32; size++) {
+    select.add(new Option(String(size), String(size)));
+  }
+}
+
 initNavigation({ loadImages, loadInferenceHistory, loadVideos, loadDatasets, loadAnnotateGrid, loadHeadCuts, loadAggregate, loadActions, loadVideoAggregate, loadMirror });
 loadEnv();
 loadImages();
