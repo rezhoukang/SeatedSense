@@ -3,6 +3,22 @@
 单机自用（仅监听 `127.0.0.1`）的视觉工具：图片/视频上传、YOLOv8 推理、YOLOv8 训练。
 FastAPI 后端 + 原生 HTML/CSS/JS 前端，数据存本地文件，**无需数据库**。
 
+## 开源项目与模型鸣谢
+
+感谢以下项目的作者和贡献者。平台使用上游模型完成检测和识别，并在本项目中实现了人头框融合、两阶段 ROI 选择和动作结果合并。
+
+| 平台用途 | 项目与模型来源 |
+| --- | --- |
+| 多模态姿态与动作识别 | 阿里云通义千问团队的 [Qwen3-VL](https://github.com/QwenLM/Qwen3-VL)。默认使用 [Qwen3-VL-4B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct)，也支持 [2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct)。 |
+| VLM 本地推理与 4-bit 量化 | [PyTorch](https://github.com/pytorch/pytorch)、[Transformers](https://github.com/huggingface/transformers)、[Accelerate](https://github.com/huggingface/accelerate)、[bitsandbytes](https://github.com/bitsandbytes-foundation/bitsandbytes) 和模型下载工具 [huggingface_hub](https://github.com/huggingface/huggingface_hub)。 |
+| 目标检测、姿态关键点与训练 | [Ultralytics](https://github.com/ultralytics/ultralytics) 提供 YOLO 实现。[Abcfsa/YOLOv8_head_detector](https://github.com/Abcfsa/YOLOv8_head_detector) 提供基准人头检测权重 `medium.pt`。 |
+| 补充人头检测 | [RT-DETRv4](https://github.com/RT-DETRs/RT-DETRv4) 提供引擎，[Awiros](https://huggingface.co/Awiros/person_and_head_detection) 提供 CrowdHuman 人体与人头检测权重。 |
+| 开放词表检测 | [YOLO-World](https://github.com/AILab-CVC/YOLO-World) 提供开放词表检测方法。平台通过 Ultralytics 调用模型，并使用源自 [OpenAI CLIP](https://github.com/openai/CLIP) 的 [Ultralytics CLIP](https://github.com/ultralytics/CLIP) 编码文本。 |
+| 人脸检测与特征提取 | [InsightFace](https://github.com/deepinsight/insightface) 提供 SCRFD 检测和 ArcFace 识别模型，平台使用 [ONNX Runtime](https://github.com/microsoft/onnxruntime) 执行推理。 |
+| 图像、视频与 Web 服务 | [OpenCV](https://github.com/opencv/opencv)、[Pillow](https://github.com/python-pillow/Pillow) 和 [OpenH264](https://github.com/cisco/openh264) 用于媒体处理。[FastAPI](https://github.com/fastapi/fastapi) 和 [Uvicorn](https://github.com/encode/uvicorn) 提供本地 HTTP 服务。 |
+
+默认 VLM 的权重与处理器文件位于 `weight/Qwen3-VL-4B-Instruct/`。首次执行 VLM 推理时，平台后端的 Python 进程通过 Transformers 读取本地文件并加载模型。
+
 ## YOLOv8 权重下载
 
 下载后按下表文件名放入项目根目录的 `weight/` 文件夹，页面会扫描该目录生成权重选项。
